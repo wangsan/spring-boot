@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2015 the original author or authors.
+ * Copyright 2012-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,8 @@ import org.springframework.batch.core.launch.JobLauncher;
 import org.springframework.batch.core.launch.JobOperator;
 import org.springframework.batch.core.launch.support.SimpleJobOperator;
 import org.springframework.batch.core.repository.JobRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.ExitCodeGenerator;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -39,6 +40,7 @@ import org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfigurat
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.io.ResourceLoader;
 import org.springframework.jdbc.core.JdbcOperations;
 import org.springframework.util.StringUtils;
 
@@ -63,17 +65,22 @@ import org.springframework.util.StringUtils;
 @EnableConfigurationProperties(BatchProperties.class)
 public class BatchAutoConfiguration {
 
-	@Autowired
-	private BatchProperties properties;
+	private final BatchProperties properties;
 
-	@Autowired(required = false)
-	private JobParametersConverter jobParametersConverter;
+	private final JobParametersConverter jobParametersConverter;
+
+	public BatchAutoConfiguration(BatchProperties properties,
+			ObjectProvider<JobParametersConverter> jobParametersConverterProvider) {
+		this.properties = properties;
+		this.jobParametersConverter = jobParametersConverterProvider.getIfAvailable();
+	}
 
 	@Bean
 	@ConditionalOnMissingBean
 	@ConditionalOnBean(DataSource.class)
-	public BatchDatabaseInitializer batchDatabaseInitializer() {
-		return new BatchDatabaseInitializer();
+	public BatchDatabaseInitializer batchDatabaseInitializer(DataSource dataSource,
+			ResourceLoader resourceLoader) {
+		return new BatchDatabaseInitializer(dataSource, resourceLoader, this.properties);
 	}
 
 	@Bean
@@ -91,7 +98,7 @@ public class BatchAutoConfiguration {
 	}
 
 	@Bean
-	@ConditionalOnMissingBean
+	@ConditionalOnMissingBean(ExitCodeGenerator.class)
 	public JobExecutionExitCodeGenerator jobExecutionExitCodeGenerator() {
 		return new JobExecutionExitCodeGenerator();
 	}
@@ -131,8 +138,11 @@ public class BatchAutoConfiguration {
 	@Configuration
 	protected static class JpaBatchConfiguration {
 
-		@Autowired
-		private BatchProperties properties;
+		private final BatchProperties properties;
+
+		protected JpaBatchConfiguration(BatchProperties properties) {
+			this.properties = properties;
+		}
 
 		// The EntityManagerFactory may not be discoverable by type when this condition
 		// is evaluated, so we need a well-known bean name. This is the one used by Spring

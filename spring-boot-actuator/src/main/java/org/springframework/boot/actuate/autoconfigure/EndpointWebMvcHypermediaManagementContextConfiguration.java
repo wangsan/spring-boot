@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2015 the original author or authors.
+ * Copyright 2012-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.springframework.boot.actuate.autoconfigure;
 
 import java.io.IOException;
 import java.lang.reflect.Type;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -31,6 +32,8 @@ import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.actuate.autoconfigure.EndpointWebMvcHypermediaManagementContextConfiguration.EndpointHypermediaEnabledCondition;
+import org.springframework.boot.actuate.condition.ConditionalOnEnabledEndpoint;
 import org.springframework.boot.actuate.endpoint.mvc.DocsMvcEndpoint;
 import org.springframework.boot.actuate.endpoint.mvc.HalBrowserMvcEndpoint;
 import org.springframework.boot.actuate.endpoint.mvc.HalJsonMvcEndpoint;
@@ -38,6 +41,7 @@ import org.springframework.boot.actuate.endpoint.mvc.HypermediaDisabled;
 import org.springframework.boot.actuate.endpoint.mvc.ManagementServletContext;
 import org.springframework.boot.actuate.endpoint.mvc.MvcEndpoint;
 import org.springframework.boot.actuate.endpoint.mvc.MvcEndpoints;
+import org.springframework.boot.autoconfigure.condition.AnyNestedCondition;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -49,6 +53,8 @@ import org.springframework.boot.autoconfigure.web.ResourceProperties;
 import org.springframework.boot.autoconfigure.web.ServerProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Conditional;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.core.MethodParameter;
 import org.springframework.core.annotation.AnnotationUtils;
 import org.springframework.core.io.ResourceLoader;
@@ -84,7 +90,7 @@ import static org.springframework.hateoas.mvc.ControllerLinkBuilder.linkTo;
 @ConditionalOnClass(Link.class)
 @ConditionalOnWebApplication
 @ConditionalOnBean(HttpMessageConverters.class)
-@ConditionalOnProperty(value = "endpoints.enabled", matchIfMissing = true)
+@Conditional(EndpointHypermediaEnabledCondition.class)
 @EnableConfigurationProperties(ResourceProperties.class)
 public class EndpointWebMvcHypermediaManagementContextConfiguration {
 
@@ -101,7 +107,7 @@ public class EndpointWebMvcHypermediaManagementContextConfiguration {
 		};
 	}
 
-	@ConditionalOnProperty(prefix = "endpoints.actuator", name = "enabled", matchIfMissing = true)
+	@ConditionalOnEnabledEndpoint("actuator")
 	@Bean
 	public HalJsonMvcEndpoint halJsonMvcEndpoint(
 			ManagementServletContext managementServletContext,
@@ -113,14 +119,6 @@ public class EndpointWebMvcHypermediaManagementContextConfiguration {
 	}
 
 	@Bean
-	@ConditionalOnProperty(prefix = "endpoints.docs", name = "enabled", matchIfMissing = true)
-	@ConditionalOnResource(resources = "classpath:/META-INF/resources/spring-boot-actuator/docs/index.html")
-	public DocsMvcEndpoint docsMvcEndpoint(
-			ManagementServletContext managementServletContext) {
-		return new DocsMvcEndpoint(managementServletContext);
-	}
-
-	@Bean
 	@ConditionalOnBean(DocsMvcEndpoint.class)
 	@ConditionalOnMissingBean(CurieProvider.class)
 	@ConditionalOnProperty(prefix = "endpoints.docs.curies", name = "enabled", matchIfMissing = false)
@@ -128,11 +126,20 @@ public class EndpointWebMvcHypermediaManagementContextConfiguration {
 			ManagementServerProperties management, DocsMvcEndpoint endpoint) {
 		String path = management.getContextPath() + endpoint.getPath()
 				+ "/#spring_boot_actuator__{rel}";
-		if (server.getPort() == management.getPort() && management.getPort() != null
-				&& management.getPort() != 0) {
-			path = server.getPath(path);
-		}
 		return new DefaultCurieProvider("boot", new UriTemplate(path));
+	}
+
+	@Configuration
+	static class DocsMvcEndpointConfiguration {
+
+		@Bean
+		@ConditionalOnEnabledEndpoint("docs")
+		@ConditionalOnResource(resources = "classpath:/META-INF/resources/spring-boot-actuator/docs/index.html")
+		public DocsMvcEndpoint docsMvcEndpoint(
+				ManagementServletContext managementServletContext) {
+			return new DocsMvcEndpoint(managementServletContext);
+		}
+
 	}
 
 	/**
@@ -196,8 +203,12 @@ public class EndpointWebMvcHypermediaManagementContextConfiguration {
 		}
 
 		private boolean isActuatorEndpointPath(String path) {
-			return this.halJsonMvcEndpoint != null && (this.management.getContextPath()
-					+ this.halJsonMvcEndpoint.getPath()).equals(path);
+			if (this.halJsonMvcEndpoint != null) {
+				String toMatch = this.management.getContextPath()
+						+ this.halJsonMvcEndpoint.getPath();
+				return toMatch.equals(path) || (toMatch + "/").equals(path);
+			}
+			return false;
 		}
 
 	}
@@ -206,17 +217,16 @@ public class EndpointWebMvcHypermediaManagementContextConfiguration {
 	 * Controller advice that adds links to the existing Actuator endpoints. By default
 	 * all the top-level resources are enhanced with a "self" link. Those resources that
 	 * could not be enhanced (e.g. "/env/{name}") because their values are "primitive" are
-	 * ignored. Those that have values of type Collection (e.g. /trace) are transformed in
-	 * to maps, and the original collection value is added with a key equal to the
-	 * endpoint name.
+	 * ignored.
 	 */
+	@ConditionalOnProperty(prefix = "endpoints.hypermedia", name = "enabled", matchIfMissing = false)
 	@ControllerAdvice(assignableTypes = MvcEndpoint.class)
 	public static class MvcEndpointAdvice implements ResponseBodyAdvice<Object> {
 
 		@Autowired
 		private List<RequestMappingHandlerAdapter> handlerAdapters;
 
-		private Map<MediaType, HttpMessageConverter<?>> converterCache = new ConcurrentHashMap<MediaType, HttpMessageConverter<?>>();
+		private final Map<MediaType, HttpMessageConverter<?>> converterCache = new ConcurrentHashMap<MediaType, HttpMessageConverter<?>>();
 
 		@Override
 		public boolean supports(MethodParameter returnType,
@@ -246,6 +256,10 @@ public class EndpointWebMvcHypermediaManagementContextConfiguration {
 				// Assume it already was handled or it already has its links
 				return body;
 			}
+			if (body instanceof Collection || body.getClass().isArray()) {
+				// We can't add links to a collection without wrapping it
+				return body;
+			}
 			HttpMessageConverter<Object> converter = findConverter(selectedConverterType,
 					selectedContentType);
 			if (converter == null || isHypermediaDisabled(returnType)) {
@@ -267,8 +281,10 @@ public class EndpointWebMvcHypermediaManagementContextConfiguration {
 		private HttpMessageConverter<Object> findConverter(
 				Class<? extends HttpMessageConverter<?>> selectedConverterType,
 				MediaType mediaType) {
-			if (this.converterCache.containsKey(mediaType)) {
-				return (HttpMessageConverter<Object>) this.converterCache.get(mediaType);
+			HttpMessageConverter<Object> cached = (HttpMessageConverter<Object>) this.converterCache
+					.get(mediaType);
+			if (cached != null) {
+				return cached;
 			}
 			for (RequestMappingHandlerAdapter handlerAdapter : this.handlerAdapters) {
 				for (HttpMessageConverter<?> converter : handlerAdapter
@@ -322,6 +338,24 @@ public class EndpointWebMvcHypermediaManagementContextConfiguration {
 		@JsonAnyGetter
 		public Map<String, Object> getEmbedded() {
 			return this.embedded;
+		}
+
+	}
+
+	static class EndpointHypermediaEnabledCondition extends AnyNestedCondition {
+
+		EndpointHypermediaEnabledCondition() {
+			super(ConfigurationPhase.REGISTER_BEAN);
+		}
+
+		@ConditionalOnEnabledEndpoint("actuator")
+		static class ActuatorEndpointEnabled {
+
+		}
+
+		@ConditionalOnEnabledEndpoint("docs")
+		static class DocsEndpointEnabled {
+
 		}
 
 	}

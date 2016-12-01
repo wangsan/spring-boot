@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2014 the original author or authors.
+ * Copyright 2012-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,8 +41,7 @@ public class SpringTestCompilerAutoConfiguration extends CompilerAutoConfigurati
 
 	@Override
 	public boolean matches(ClassNode classNode) {
-		return AstUtils.hasAtLeastOneAnnotation(classNode,
-				"SpringApplicationConfiguration");
+		return AstUtils.hasAtLeastOneAnnotation(classNode, "SpringBootTest");
 	}
 
 	@Override
@@ -58,7 +57,7 @@ public class SpringTestCompilerAutoConfiguration extends CompilerAutoConfigurati
 		if (!AstUtils.hasAtLeastOneAnnotation(classNode, "RunWith")) {
 			AnnotationNode runWith = new AnnotationNode(ClassHelper.make("RunWith"));
 			runWith.addMember("value",
-					new ClassExpression(ClassHelper.make("SpringJUnit4ClassRunner")));
+					new ClassExpression(ClassHelper.make("SpringRunner")));
 			classNode.addAnnotation(runWith);
 		}
 	}
@@ -66,8 +65,11 @@ public class SpringTestCompilerAutoConfiguration extends CompilerAutoConfigurati
 	@Override
 	public void applyImports(ImportCustomizer imports) throws CompilationFailedException {
 		imports.addStarImports("org.junit.runner", "org.springframework.boot.test",
-				"org.springframework.http", "org.springframework.test.context.junit4",
-				"org.springframework.test.annotation")
-				.addImports("org.springframework.test.context.web.WebAppConfiguration");
+				"org.springframework.boot.test.context",
+				"org.springframework.boot.test.web.client", "org.springframework.http",
+				"org.springframework.test.context.junit4",
+				"org.springframework.test.annotation").addImports(
+						"org.springframework.boot.test.context.SpringBootTest.WebEnvironment",
+						"org.springframework.boot.test.web.client.TestRestTemplate");
 	}
 }

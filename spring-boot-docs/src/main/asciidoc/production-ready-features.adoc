@@ -5,11 +5,12 @@
 --
 Spring Boot includes a number of additional features to help you monitor and manage your
 application when it's pushed to production. You can choose to manage and monitor your
-application using HTTP endpoints, with JMX or even by remote shell (SSH or Telnet).
-Auditing, health and metrics gathering can be automatically applied to your application.
+application using HTTP endpoints or with JMX. Auditing, health and metrics gathering can
+be automatically applied to your application.
 
 Actuator HTTP endpoints are only available with a Spring MVC-based application. In
-particular, it will not work with Jersey unless you enable Spring MVC as well.
+particular, it will not work with Jersey <<howto.adoc#howto-use-actuator-with-jersey,
+unless you enable Spring MVC as well.>>
 --
 
 
@@ -18,7 +19,7 @@ particular, it will not work with Jersey unless you enable Spring MVC as well.
 == Enabling production-ready features
 The {github-code}/spring-boot-actuator[`spring-boot-actuator`] module provides all of
 Spring Boot's production-ready features. The simplest way to enable the features is to add
-a dependency to the `spring-boot-starter-actuator` '`Starter POM`'.
+a dependency to the `spring-boot-starter-actuator` '`Starter`'.
 
 .Definition of Actuator
 ****
@@ -27,7 +28,7 @@ controlling something. Actuators can generate a large amount of motion from a sm
 change.
 ****
 
-To add the actuator to a Maven based project, add the following '`starter`'
+To add the actuator to a Maven based project, add the following '`Starter`'
 dependency:
 
 [source,xml,indent=0]
@@ -61,7 +62,7 @@ The way that endpoints are exposed will depend on the type of technology that yo
 Most applications choose HTTP monitoring, where the ID of the endpoint is mapped
 to a URL. For example, by default, the `health` endpoint will be mapped to `/health`.
 
-The following endpoints are available:
+The following technology agnostic endpoints are available:
 
 [cols="2,5,1"]
 |===
@@ -98,21 +99,21 @@ HATEOAS to be on the classpath.
 |true
 
 |`health`
-|Shows application health information (when the application is secure, a simple '`status`' when accessed over an
-unauthenticated connection or full message details when authenticated).
+|Shows application health information (when the application is secure, a simple '`status`'
+when accessed over an unauthenticated connection or full message details when
+authenticated).
 |false
 
 |`info`
 |Displays arbitrary application info.
 |false
 
-|`liquibase`
-|Shows any Liquibase database migrations that have been applied.
+|`loggers`
+|Shows and modifies the configuration of loggers in the application.
 |true
 
-|`logfile`
-|Returns the contents of the logfile (if `logging.file` or `logging.path` properties have
-been set). Only available via MVC.
+|`liquibase`
+|Shows any Liquibase database migrations that have been applied.
 |true
 
 |`metrics`
@@ -128,7 +129,33 @@ been set). Only available via MVC.
 |true
 
 |`trace`
-|Displays trace information (by default the last few HTTP requests).
+|Displays trace information (by default the last 100 HTTP requests).
+|true
+|===
+
+If you are using Spring MVC, the following additional endpoints can also be used:
+
+[cols="2,5,1"]
+|===
+| ID | Description | Sensitive Default
+
+|`docs`
+|Displays documentation, including example requests and responses, for the Actuator's
+endpoints. Requires `spring-boot-actuator-docs` to be on the classpath.
+|false
+
+|`heapdump`
+|Returns a GZip compressed `hprof` heap dump file.
+|true
+
+|`jolokia`
+|Exposes JMX beans over HTTP (when Jolokia is on the classpath).
+|true
+
+|`logfile`
+|Returns the contents of the logfile (if `logging.file` or `logging.path` properties have
+been set). Supports the use of the HTTP `Range` header to retrieve part of the log file's
+content.
 |true
 |===
 
@@ -180,7 +207,8 @@ For example, to mark _all_ endpoints as sensitive except `info`:
 
 [[production-ready-endpoint-hypermedia]]
 === Hypermedia for actuator MVC endpoints
-If http://projects.spring.io/spring-hateoas[Spring HATEOAS] is on the classpath (e.g.
+If `endpoints.hypermedia.enabled` is set to `true` and
+http://projects.spring.io/spring-hateoas[Spring HATEOAS] is on the classpath (e.g.
 through the `spring-boot-starter-hateoas` or if you are using
 http://projects.spring.io/spring-data-rest[Spring Data REST]) then the HTTP endpoints
 from the Actuator are enhanced with hypermedia links, and a "`discovery page`" is added
@@ -229,13 +257,13 @@ HTTP (if there is an server available). An HTTP endpoints can be customized furt
 creating a bean of type `MvcEndpoint`. Your `MvcEndpoint` is not a `@Controller` but it
 can use `@RequestMapping` (and `@Managed*`) to expose resources.
 
-TIP: If you are doing this as a library feature consider adding a configuration class to
-`/META-INF/spring.factories` under the key
-`org.springframework.boot.actuate.autoconfigure.EndpointWebMvcConfiguration`. If you do
-that then the endpoint will move to a child context with all the other MVC endpoints if
-your users ask for a separate management port or address. A configuration declared this
-way can be a `WebConfigurerAdapter` if it wants to add static resources (for instance) to
-the management endpoints.
+TIP: If you are doing this as a library feature consider adding a configuration class
+annotated with `@ManagementContextConfiguration` to `/META-INF/spring.factories` under the
+key `org.springframework.boot.actuate.autoconfigure.ManagementContextConfiguration`. If
+you do that then the endpoint will move to a child context with all the other MVC
+endpoints if your users ask for a separate management port or address. A configuration
+declared this way can be a `WebConfigurerAdapter` if it wants to add static resources (for
+instance) to the management endpoints.
 
 
 
@@ -285,7 +313,7 @@ The following `HealthIndicators` are auto-configured by Spring Boot when appropr
 |Checks that a connection to `DataSource` can be obtained.
 
 |{sc-spring-boot-actuator}/health/ElasticsearchHealthIndicator.{sc-ext}[`ElasticsearchHealthIndicator`]
-|Checks that an ElasticSearch cluster is up.
+|Checks that an Elasticsearch cluster is up.
 
 |{sc-spring-boot-actuator}/health/JmsHealthIndicator.{sc-ext}[`JmsHealthIndicator`]
 |Checks that a JMS broker is up.
@@ -319,11 +347,12 @@ additional details to be displayed.
 
 [source,java,indent=0]
 ----
+	import org.springframework.boot.actuate.health.Health;
 	import org.springframework.boot.actuate.health.HealthIndicator;
 	import org.springframework.stereotype.Component;
 
 	@Component
-	public class MyHealth implements HealthIndicator {
+	public class MyHealthIndicator implements HealthIndicator {
 
 		@Override
 		public Health health() {
@@ -336,6 +365,10 @@ additional details to be displayed.
 
 	}
 ----
+
+NOTE: The identifier for a given `HealthIndicator` is the name of the bean without the
+`HealthIndicator` suffix if it exists. In the example above, the health information will
+be available in an entry named `my`.
 
 In addition to Spring Boot's predefined {sc-spring-boot-actuator}/health/Status.{sc-ext}[`Status`]
 types, it is also possible for `Health` to return a custom `Status` that represents a
@@ -360,145 +393,131 @@ if you access the health endpoint over HTTP. For example you could map `FATAL` t
 
 
 [[production-ready-application-info]]
-=== Custom application info information
+=== Application information
+Application information exposes various information collected from all
+{sc-spring-boot-actuator}/info/InfoContributor.{sc-ext}[`InfoContributor`] beans defined
+in your `ApplicationContext`. Spring Boot includes a number of auto-configured
+`InfoContributors` and you can also write your own.
+
+[[production-ready-application-info-autoconfigure]]
+==== Auto-configured InfoContributors
+
+The following `InfoContributors` are auto-configured by Spring Boot when appropriate:
+
+[cols="1,4"]
+|===
+|Name |Description
+
+|{sc-spring-boot-actuator}/info/EnvironmentInfoContributor.{sc-ext}[`EnvironmentInfoContributor`]
+|Expose any key from the `Environment` under the `info` key.
+
+|{sc-spring-boot-actuator}/info/GitInfoContributor.{sc-ext}[`GitInfoContributor`]
+|Expose git information if a `git.properties` file is available.
+
+|{sc-spring-boot-actuator}/info/BuildInfoContributor.{sc-ext}[`BuildInfoContributor`]
+|Expose build information if a `META-INF/build-info.properties` file is available.
+|===
+
+TIP: It is possible to disable them all using the `management.info.defaults.enabled`
+property.
+
+[[production-ready-application-info-env]]
+==== Custom application info information
 You can customize the data exposed by the `info` endpoint by setting `+info.*+` Spring
 properties. All `Environment` properties under the info key will be automatically
 exposed. For example, you could add the following to your `application.properties`:
 
 [source,properties,indent=0]
 ----
-	info.app.name=MyService
-	info.app.description=My awesome service
-	info.app.version=1.0.0
+	info.app.encoding=UTF-8
+	info.app.java.source=1.8
+	info.app.java.target=1.8
 ----
 
+[TIP]
+====
+Rather than hardcoding those values you could also
+<<howto.adoc#howto-automatic-expansion,expand info properties at build time>>.
 
-
-[[production-ready-application-info-automatic-expansion]]
-==== Automatically expand info properties at build time
-Rather than hardcoding some properties that are also specified in your project's build
-configuration, you can automatically expand info properties using the existing build
-configuration instead. This is possible in both Maven and Gradle.
-
-
-
-[[production-ready-application-info-automatic-expansion-maven]]
-===== Automatic property expansion using Maven
-You can automatically expand info properties from the Maven project using resource
-filtering. If you use the `spring-boot-starter-parent` you can then refer to your
-Maven '`project properties`' via `@..@` placeholders, e.g.
+Assuming you are using Maven, you could rewrite the example above as follows:
 
 [source,properties,indent=0]
 ----
-	project.artifactId=myproject
-	project.name=Demo
-	project.version=X.X.X.X
-	project.description=Demo project for info endpoint
-	info.build.artifact=@project.artifactId@
-	info.build.name=@project.name@
-	info.build.description=@project.description@
-	info.build.version=@project.version@
+	info.app.encoding=@project.build.sourceEncoding@
+	info.app.java.source=@java.version@
+	info.app.java.target=@java.version@
 ----
-
-TIP: The `spring-boot:run` can add `src/main/resources` directly to the classpath
-(for hot reloading purposes) if you enable the `addResources` flag. This circumvents
-the resource filtering and this feature. You can use the `exec:java` goal instead
-or customize the plugin's configuration, see the
-{spring-boot-maven-plugin-site}/usage.html[plugin usage page] for more details.
-
-If you don't use the starter parent, in your `pom.xml` you need (inside the `<build/>`
-element):
-
-[source,xml,indent=0]
-----
-    <resources>
-        <resource>
-            <directory>src/main/resources</directory>
-            <filtering>true</filtering>
-        </resource>
-    </resources>
-----
-
-and (inside `<plugins/>`):
-
-[source,xml,indent=0]
-----
-	<plugin>
-		<groupId>org.apache.maven.plugins</groupId>
-		<artifactId>maven-resources-plugin</artifactId>
-		<version>2.6</version>
-		<configuration>
-			<delimiters>
-				<delimiter>@</delimiter>
-			</delimiters>
-			<useDefaultDelimiters>false</useDefaultDelimiters>
-		</configuration>
-	</plugin>
-----
-
-NOTE: The `useDefaultDelimiters` property is important if you are using standard Spring
-placeholders in your configuration (e.g. `${foo}`). These may be expanded by the build if
-that property is not set to `false`.
+====
 
 
 
-[[production-ready-application-info-automatic-expansion-gradle]]
-===== Automatic property expansion using Gradle
-You can automatically expand info properties from the Gradle project by configuring
-the Java plugin's `processResources` task to do so:
-
-[source,groovy,indent=0]
-----
-	processResources {
-		expand(project.properties)
-	}
-----
-
-You can then refer to your Gradle project's properties via placeholders, e.g.
-
-[source,properties,indent=0]
-----
-	info.build.name=${name}
-	info.build.description=${description}
-	info.build.version=${version}
-----
-
-NOTE: Gradle's `expand` method uses Groovy's `SimpleTemplateEngine` which transforms
-`${..}` tokens. The `${..}` style conflicts with Spring's own property placeholder
-mechanism. To use Spring property placeholders together with automatic expansion
-the Spring property placeholders need to be escaped like `\${..}`.
-
-
-
-[[production-ready-git-commit-information]]
+[[production-ready-application-info-git]]
 ==== Git commit information
 Another useful feature of the `info` endpoint is its ability to publish information
 about the state of your `git` source code repository when the project was built. If a
-`git.properties` file is contained in your jar the `git.branch` and `git.commit`
-properties will be loaded.
+`GitProperties` bean is available, the `git.branch`, `git.commit.id` and
+`git.commit.time` properties will be exposed.
 
-For Maven users the `spring-boot-starter-parent` POM includes a pre-configured plugin to
-generate a `git.properties` file. Simply add the following declaration to your POM:
+TIP: A `GitProperties` bean is auto-configured if a `git.properties` file is available
+at the root of the classpath. See
+<<howto.adoc#howto-git-info,Generate git information>> for more details.
 
-[source,xml,indent=0]
+If you want to display the full git information (i.e. the full content of
+`git.properties`), use the `management.info.git.mode` property:
+
+[source,properties,indent=0]
 ----
-	<build>
-		<plugins>
-			<plugin>
-				<groupId>pl.project13.maven</groupId>
-				<artifactId>git-commit-id-plugin</artifactId>
-			</plugin>
-		</plugins>
-	</build>
+	management.info.git.mode=full
 ----
 
-Gradle users can achieve the same result using the
-https://plugins.gradle.org/plugin/com.gorylenko.gradle-git-properties[`gradle-git-properties`] plugin
 
-[source,groovy,indent=0]
+
+[[production-ready-application-info-build]]
+==== Build information
+The `info` endpoint can also publish information about your build if a `BuildProperties`
+bean is available. This happens if a `META-INF/build-info.properties` file is available
+in the classpath.
+
+TIP: The Maven and Gradle plugins can both generate that file, see
+<<howto.adoc#howto-build-info,Generate build information>> for more details.
+
+
+[[production-ready-application-info-custom]]
+==== Writing custom InfoContributors
+To provide custom application information you can register Spring beans that implement
+the {sc-spring-boot-actuator}/info/InfoContributor.{sc-ext}[`InfoContributor`] interface.
+
+The example below contributes an `example` entry with a single value:
+
+[source,java,indent=0]
 ----
-	plugins {
-		id "com.gorylenko.gradle-git-properties" version "1.4.6"
+	import java.util.Collections;
+
+	import org.springframework.boot.actuate.info.Info;
+	import org.springframework.boot.actuate.info.InfoContributor;
+	import org.springframework.stereotype.Component;
+
+	@Component
+	public class ExampleInfoContributor implements InfoContributor {
+
+		@Override
+		public void contribute(Info.Builder builder) {
+			builder.withDetail("example",
+					Collections.singletonMap("key", "value"));
+		}
+
+	}
+----
+
+If you hit the `info` endpoint you should see a response that contains the following
+additional entry:
+
+[source,json,indent=0]
+----
+	{
+		"example": {
+			"key" : "value"
+		}
 	}
 ----
 
@@ -523,14 +542,14 @@ TIP: Generated passwords are logged as the application starts. Search for '`Usin
 security password`'.
 
 You can use Spring properties to change the username and password and to change the
-security role required to access the endpoints. For example, you might set the following
+security role(s) required to access the endpoints. For example, you might set the following
 in your `application.properties`:
 
 [source,properties,indent=0]
 ----
 	security.user.name=admin
 	security.user.password=secret
-	management.security.role=SUPERUSER
+	management.security.roles=SUPERUSER
 ----
 
 TIP: If you don't use Spring Security and your HTTP endpoints are exposed publicly,
@@ -598,6 +617,39 @@ disable the management security in this way, and it might even break the applica
 
 
 
+[[production-ready-management-specific-ssl]]
+=== Configuring management-specific SSL
+When configured to use a custom port, the management server can also be configured with
+its own SSL using the various `management.ssl.*` properties. For example, this allows a
+management server to be available via HTTP while the main application uses HTTPS:
+
+[source,properties,indent=0]
+----
+	server.port=8443
+	server.ssl.enabled=true
+	server.ssl.key-store=classpath:store.jks
+	server.ssl.key-password=secret
+	management.port=8080
+	management.ssl.enable=false
+----
+
+Alternatively, both the main server and the management server can use SSL but with
+different key stores:
+
+[source,properties,indent=0]
+----
+	server.port=8443
+	server.ssl.enabled=true
+	server.ssl.key-store=classpath:main.jks
+	server.ssl.key-password=secret
+	management.port=8080
+	management.ssl.enable=true
+	management.ssl.key-store=classpath:management.jks
+	management.ssl.key-password=secret
+----
+
+
+
 [[production-ready-customizing-management-server-address]]
 === Customizing the management server address
 You can customize the address that the management endpoints are available on by
@@ -636,10 +688,10 @@ The information exposed by the health endpoint varies depending on whether or no
 accessed anonymously, and whether or not the enclosing application is secure.
 By default, when accessed anonymously in a secure application, any details about the
 server's health are hidden and the endpoint will simply indicate whether or not the server
-is up or down. Furthermore, when accessed anonymously, the response is cached for a
-configurable period to prevent the endpoint being used in a denial of service attack.
-The `endpoints.health.time-to-live` property is used to configure the caching period in
-milliseconds. It defaults to 1000, i.e. one second.
+is up or down. Furthermore the response is cached for a configurable period to prevent the
+endpoint being used in a denial of service attack. The `endpoints.health.time-to-live`
+property is used to configure the caching period in milliseconds. It defaults to 1000,
+i.e. one second.
 
 The above-described restrictions can be enhanced, thereby allowing only authenticated
 users full access to the health endpoint in a secure application. To do so, set
@@ -755,141 +807,36 @@ If you are using Jolokia but you don't want Spring Boot to configure it, simply 
 
 
 
-[[production-ready-remote-shell]]
-== Monitoring and management using a remote shell
-Spring Boot supports an integrated Java shell called '`CRaSH`'. You can use CRaSH to
-`ssh` or `telnet` into your running application. To enable remote shell support, add
-the following dependency to your project:
+[[production-ready-loggers]]
+== Loggers
+Spring Boot Actuator includes the ability to view and configure the log levels of your
+application at runtime.  You can view either the entire list or an individual logger's
+configuration which is made up of both the explicitly configured logging level as well as
+the effective logging level given to it by the logging framework.  These levels can be:
 
-[source,xml,indent=0]
+* `TRACE`
+* `DEBUG`
+* `INFO`
+* `WARN`
+* `ERROR`
+* `FATAL`
+* `OFF`
+* `null`
+
+with `null` indicating that there is no explicit configuration.
+
+
+
+[[production-ready-logger-configuration]]
+=== Configure a Logger
+In order to configure a given logger, you `POST` a partial entity to the resource's URI:
+
+[source,json,indent=0]
 ----
-	<dependency>
-		<groupId>org.springframework.boot</groupId>
-		<artifactId>spring-boot-starter-remote-shell</artifactId>
- 	</dependency>
-----
-
-TIP: If you want to also enable telnet access you will additionally need a dependency
-on `org.crsh:crsh.shell.telnet`.
-
-NOTE: CRaSH requires to run with a JDK as it compiles commands on the fly. If a basic
-`help` command fails, you are probably running with a JRE.
-
-
-[[production-ready-connecting-to-the-remote-shell]]
-=== Connecting to the remote shell
-By default the remote shell will listen for connections on port `2000`. The default user
-is `user` and the default password will be randomly generated and displayed in the log
-output. If your application is using Spring Security, the shell will use
-<<boot-features-security, the same configuration>> by default. If not, a simple
-authentication will be applied and you should see a message like this:
-
-[indent=0]
-----
-	Using default password for shell access: ec03e16c-4cf4-49ee-b745-7c8255c1dd7e
-----
-
-Linux and OSX users can use `ssh` to connect to the remote shell, Windows users can
-download and install http://www.putty.org/[PuTTY].
-
-[indent=0,subs="attributes"]
-----
-	$ ssh -p 2000 user@localhost
-
-	user@localhost's password:
-	  .   ____          _            __ _ _
-	 /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
-	( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
-	 \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
-	  '  |____| .__|_| |_|_| |_\__, | / / / /
-	 =========|_|==============|___/=/_/_/_/
-	 :: Spring Boot ::  (v{spring-boot-version}) on myhost
-----
-
-Type `help` for a list of commands. Spring Boot provides `metrics`, `beans`, `autoconfig`
-and `endpoint` commands.
-
-
-
-[[production-ready-remote-shell-credentials]]
-==== Remote shell credentials
-You can use the `shell.auth.simple.user.name` and `shell.auth.simple.user.password` properties
-to configure custom connection credentials. It is also possible to use a
-'`Spring Security`' `AuthenticationManager` to handle login duties. See the
-{dc-spring-boot-actuator}/autoconfigure/CrshAutoConfiguration.{dc-ext}[`CrshAutoConfiguration`]
-and {dc-spring-boot-actuator}/autoconfigure/ShellProperties.{dc-ext}[`ShellProperties`]
-Javadoc for full details.
-
-
-
-[[production-ready-extending-the-remote-shell]]
-=== Extending the remote shell
-The remote shell can be extended in a number of interesting ways.
-
-
-
-[[production-ready-remote-commands]]
-==== Remote shell commands
-You can write additional shell commands using Groovy or Java (see the CRaSH documentation
-for details). By default Spring Boot will search for commands in the following locations:
-
-* `+classpath*:/commands/**+`
-* `+classpath*:/crash/commands/**+`
-
-TIP: You can change the search path by settings a `shell.command-path-patterns` property.
-
-Here is a simple '`hello`' command that could be loaded from
-`src/main/resources/commands/hello.groovy`
-
-[source,groovy,indent=0]
-----
-	package commands
-
-	import org.crsh.cli.Command
-	import org.crsh.cli.Usage
-	import org.crsh.command.InvocationContext
-
-	class hello {
-
-		@Usage("Say Hello")
-		@Command
-		def main(InvocationContext context) {
-			return "Hello"
-		}
-
+	{
+		"configuredLevel": "DEBUG"
 	}
 ----
-
-Spring Boot adds some additional attributes to `InvocationContext` that you can access
-from your command:
-
-[cols="2,3"]
-|===
-| Attribute Name | Description
-
-|`spring.boot.version`
-|The version of Spring Boot
-
-|`spring.version`
-|The version of the core Spring Framework
-
-|`spring.beanfactory`
-|Access to the Spring `BeanFactory`
-
-|`spring.environment`
-|Access to the Spring `Environment`
-|===
-
-
-
-[[production-ready-remote-shell-plugins]]
-==== Remote shell plugins
-In addition to new commands, it is also possible to extend other CRaSH shell features.
-All Spring Beans that extend `org.crsh.plugin.CRaSHPlugin` will be automatically
-registered with the shell.
-
-For more information please refer to the http://www.crashub.org/[CRaSH reference
-documentation].
 
 
 
@@ -923,6 +870,10 @@ endpoint you should see a response similar to this:
 		"heap.committed": 986624,
 		"heap.init": 262144,
 		"heap.used": 52765,
+		"nonheap": 0,
+		"nonheap.committed": 77568,
+		"nonheap.init": 2496,
+		"nonheap.used": 75826,
 		"mem": 986624,
 		"mem.free": 933858,
 		"processors": 8,
@@ -1012,7 +963,7 @@ is prefixed by the name of the `CacheManager` bean.
 
 It is possible to override part or all of those defaults by registering a bean with a
 customized version of `CachePublicMetrics`. By default, Spring Boot provides cache
-statistics for EhCache, Hazelcast, Infinispan, JCache and Guava. You can add additional
+statistics for EhCache, Hazelcast, Infinispan, JCache and Caffeine. You can add additional
 `CacheStatisticsProvider` beans if your favorite caching library isn't supported out of
 the box. See `CacheStatisticsAutoConfiguration` for examples.
 
@@ -1228,7 +1179,7 @@ private String prefix = "metrics";
 @Bean
 @ExportMetricWriter
 MetricWriter metricWriter() {
-	return new StatsdMetricWriter(prefix, "localhost", "8125");
+	return new StatsdMetricWriter(prefix, "localhost", 8125);
 }
 ----
 
@@ -1353,7 +1304,7 @@ use that directly, or you can simply publish `AuditApplicationEvent` via the Spr
 [[production-ready-tracing]]
 == Tracing
 Tracing is automatically enabled for all HTTP requests. You can view the `trace` endpoint
-and obtain basic information about the last few requests:
+and obtain basic information about the last 100 requests:
 
 [source,json,indent=0]
 ----

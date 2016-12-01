@@ -19,6 +19,8 @@ Usage
   * <<<start>>> and <<<stop>>>: integrate your Spring Boot application to the <<<integration-test>>> phase so that
    the application starts before it.
 
+  * <<<build-info>>>: generate a build information that can be used by the Actuator.
+
    []
 
   Each goal is further described below.
@@ -55,6 +57,8 @@ Usage
   including any <<<provided>>> dependencies that are defined in the project. If some of these dependencies
   need to be excluded, you can use one of the exclude options,
   see {{{./examples/exclude-dependency.html}Exclude a dependency}} for more details.
+  Please note that the <<<outputFileNameMapping>>> feature of the <<<maven-war-plugin>>>
+  is currently not supported.
 
   The original (i.e. non executable) artifact is renamed to <<<.original>>> by default but it is also
   possible to keep the original artifact using a custom classifier.
@@ -90,8 +94,22 @@ Usage
 </build>
 ---
 
-  The layout property defaults to a guess based on the archive type (jar or war). For the
-  <<<PropertiesLauncher>>> the layout is <<<ZIP>>> (even though the output might be a jar file).
+  The <<<layout>>> property defaults to a guess based on the archive type (<<<jar>>> or <<<war>>>). The
+  following layouts are available:
+
+    * <<<JAR>>>: regular executable JAR layout.
+
+    * <<<WAR>>>: executable WAR layout. <<<provided>>> dependencies are placed in <<<WEB-INF/lib-provided>>>
+      to avoid any clash when the <<<war>>> is deployed in a servlet container.
+
+    * <<<ZIP>>> (alias to <<<DIR>>>): similar to the <<<JAR>>> layout using <<<PropertiesLauncher>>>.
+
+    * <<<MODULE>>>: Bundle dependencies (excluding those with <<<provided>>> scope) and project resources.
+      Does not bundle a bootstrap loader.
+
+    * <<<NONE>>>: Bundle all dependencies and project resources. Does not bundle a bootstrap loader.
+
+    []
 
   For more detailed examples of how to configure this goal see:
 
@@ -112,7 +130,7 @@ mvn spring-boot:run
 
   By default the application is executed directly from the Maven JVM. If you need to run
   in a forked process you can use the 'fork' option. Forking will also occur if the
-  'jvmArguments' or 'agent' options are specified.
+  'jvmArguments' or 'agent' options are specified, or if devtools is present.
 
   If you need to specify some JVM arguments (i.e. for debugging purposes), you can use
   the <<<jvmArguments>>> parameter, see {{{./examples/run-debug.html}Debug the application}}
@@ -148,7 +166,7 @@ spring.devtools.remote.restart.enabled=false
 ---
 
   Prior to <<<devtools>>>, the plugin supported hot refreshing of resources by default which has
-  now be disabled in favor of the solution described above. You can restore it at any time by
+  now be disabled in favour of the solution described above. You can restore it at any time by
   configuring your project:
 
 ---
@@ -230,6 +248,54 @@ spring.devtools.remote.restart.enabled=false
 
   Such setup can now use the {{{http://maven.apache.org/surefire/maven-failsafe-plugin/}failsafe-plugin}} to
   run your integration tests as you would expect.
+
+  You could also configure a more advanced setup to skip the integration tests when a specific property has
+  been set:
+
+---
+<properties>
+  <it.skip>false</it.skip>
+</properties>
+<build>
+  <plugins>
+    <plugin>
+      <groupId>org.apache.maven.plugins</groupId>
+      <artifactId>maven-failsafe-plugin</artifactId>
+      <configuration>
+        <skip>${it.skip}</skip>
+      </configuration>
+    </plugin>
+    <plugin>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>${project.artifactId}</artifactId>
+      <version>${project.version}</version>
+      <executions>
+        <execution>
+          <id>pre-integration-test</id>
+          <goals>
+            <goal>start</goal>
+          </goals>
+          <configuration>
+            <skip>${it.skip}</skip>
+          </configuration>
+        </execution>
+        <execution>
+          <id>post-integration-test</id>
+          <goals>
+            <goal>stop</goal>
+          </goals>
+          <configuration>
+            <skip>${it.skip}</skip>
+          </configuration>
+        </execution>
+      </executions>
+    </plugin>
+  </plugins>
+</build>
+---
+
+  If you run <<<mvn verify -Dit.skip=true>>> your integration tests will be skipped altogether.
+
 
   For more detailed examples of how to configure this goal see:
 

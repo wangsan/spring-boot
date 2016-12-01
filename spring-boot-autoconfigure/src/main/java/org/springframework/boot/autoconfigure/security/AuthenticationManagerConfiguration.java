@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2015 the original author or authors.
+ * Copyright 2012-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -69,7 +69,7 @@ import org.springframework.util.ReflectionUtils;
 @Order(0)
 public class AuthenticationManagerConfiguration {
 
-	private static Log logger = LogFactory
+	private static final Log logger = LogFactory
 			.getLog(AuthenticationManagerConfiguration.class);
 
 	@Bean
@@ -116,7 +116,6 @@ public class AuthenticationManagerConfiguration {
 
 		private final SecurityProperties securityProperties;
 
-		@Autowired
 		SpringBootAuthenticationConfigurerAdapter(SecurityProperties securityProperties) {
 			this.securityProperties = securityProperties;
 		}
@@ -167,8 +166,8 @@ public class AuthenticationManagerConfiguration {
 			}
 			User user = this.securityProperties.getUser();
 			if (user.isDefaultPassword()) {
-				logger.info("\n\nUsing default security password: " + user.getPassword()
-						+ "\n");
+				logger.info(String.format("%n%nUsing default security password: %s%n",
+						user.getPassword()));
 			}
 			Set<String> roles = new LinkedHashSet<String>(user.getRole());
 			withUser(user.getName()).password(user.getPassword())

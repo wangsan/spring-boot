@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2015 the original author or authors.
+ * Copyright 2012-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +32,8 @@ import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.ElementFilter;
 
+import org.springframework.boot.configurationprocessor.fieldvalues.FieldValuesParser;
+
 /**
  * Provides access to relevant {@link TypeElement} members.
  *
@@ -53,9 +55,14 @@ class TypeElementMembers {
 
 	private final Map<String, List<ExecutableElement>> publicSetters = new LinkedHashMap<String, List<ExecutableElement>>();
 
-	TypeElementMembers(ProcessingEnvironment env, TypeElement element) {
+	private final Map<String, Object> fieldValues = new LinkedHashMap<String, Object>();
+
+	private final FieldValuesParser fieldValuesParser;
+
+	TypeElementMembers(ProcessingEnvironment env, FieldValuesParser fieldValuesParser, TypeElement element) {
 		this.env = env;
 		this.typeUtils = new TypeUtils(this.env);
+		this.fieldValuesParser = fieldValuesParser;
 		process(element);
 	}
 
@@ -68,6 +75,19 @@ class TypeElementMembers {
 				.fieldsIn(element.getEnclosedElements())) {
 			processField(field);
 		}
+		try {
+			Map<String, Object> fieldValues = this.fieldValuesParser
+					.getFieldValues(element);
+			for (Map.Entry<String, Object> entry : fieldValues.entrySet()) {
+				if (!this.fieldValues.containsKey(entry.getKey())) {
+					this.fieldValues.put(entry.getKey(), entry.getValue());
+				}
+			}
+		}
+		catch (Exception ex) {
+			// continue
+		}
+
 		Element superType = this.env.getTypeUtils().asElement(element.getSuperclass());
 		if (superType != null && superType instanceof TypeElement
 				&& !OBJECT_CLASS_NAME.equals(superType.toString())) {
@@ -110,21 +130,22 @@ class TypeElementMembers {
 
 	private boolean isGetter(ExecutableElement method) {
 		String name = method.getSimpleName().toString();
-		return (name.startsWith("get") || name.startsWith("is"))
+		return ((name.startsWith("get") && name.length() > 3)
+				|| (name.startsWith("is") && name.length() > 2))
 				&& method.getParameters().isEmpty()
 				&& (TypeKind.VOID != method.getReturnType().getKind());
 	}
 
 	private boolean isSetter(ExecutableElement method) {
 		final String name = method.getSimpleName().toString();
-		return name.startsWith("set") && method.getParameters().size() == 1
-				&& (isSetterReturnType(method));
+		return (name.startsWith("set") && name.length() > 3
+				&& method.getParameters().size() == 1 && isSetterReturnType(method));
 	}
 
 	private boolean isSetterReturnType(ExecutableElement method) {
-		return (TypeKind.VOID == method.getReturnType().getKind()
-				|| this.env.getTypeUtils().isSameType(
-						method.getEnclosingElement().asType(), method.getReturnType()));
+		TypeMirror returnType = method.getReturnType();
+		return (TypeKind.VOID == returnType.getKind() || this.env.getTypeUtils()
+				.isSameType(method.getEnclosingElement().asType(), returnType));
 	}
 
 	private String getAccessorName(String methodName) {
@@ -162,6 +183,10 @@ class TypeElementMembers {
 			}
 		}
 		return null;
+	}
+
+	public Map<String, Object> getFieldValues() {
+		return Collections.unmodifiableMap(this.fieldValues);
 	}
 
 }

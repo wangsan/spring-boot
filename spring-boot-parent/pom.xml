@@ -4,7 +4,7 @@
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-dependencies</artifactId>
-		<version>1.3.1.BUILD-SNAPSHOT</version>
+		<version>2.0.0.BUILD-SNAPSHOT</version>
 		<relativePath>../spring-boot-dependencies</relativePath>
 	</parent>
 	<artifactId>spring-boot-parent</artifactId>
@@ -19,7 +19,7 @@
 	<properties>
 		<main.basedir>..</main.basedir>
 		<disable.checks>false</disable.checks>
-		<java.version>1.6</java.version>
+		<java.version>1.8</java.version>
 		<aether.version>1.0.2.v20150114</aether.version>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
@@ -42,20 +42,40 @@
 		<dependencies>
 			<!-- Additional Dependencies the consumers of spring-boot-dependencies
 				will generally not need -->
+			<dependency> <!-- deprecated but recent version required by 3rd party libs -->
+				<groupId>log4j</groupId>
+				<artifactId>log4j</artifactId>
+				<version>1.2.17</version>
+			</dependency>
 			<dependency>
-				<groupId>com.google.guava</groupId>
-				<artifactId>guava</artifactId>
-				<version>18.0</version>
+				<groupId>com.squareup.okhttp</groupId>
+				<artifactId>okhttp</artifactId>
+				<version>2.7.5</version>
+			</dependency>
+			<dependency>
+				<groupId>com.squareup.okhttp3</groupId>
+				<artifactId>okhttp</artifactId>
+				<version>3.4.1</version>
+			</dependency>
+			<dependency>
+				<groupId>io.netty</groupId>
+				<artifactId>netty-all</artifactId>
+				<version>4.0.38.Final</version>
 			</dependency>
 			<dependency>
 				<groupId>io.spring.gradle</groupId>
 				<artifactId>dependency-management-plugin</artifactId>
-				<version>0.5.2.RELEASE</version>
+				<version>0.6.1.RELEASE</version>
 			</dependency>
 			<dependency>
 				<groupId>jline</groupId>
 				<artifactId>jline</artifactId>
 				<version>2.11</version>
+			</dependency>
+			<dependency>
+				<groupId>net.bytebuddy</groupId>
+				<artifactId>byte-buddy</artifactId>
+				<version>1.5.4</version>
 			</dependency>
 			<dependency>
 				<groupId>net.sf.jopt-simple</groupId>
@@ -174,11 +194,6 @@
 			</dependency>
 			<dependency>
 				<groupId>org.gradle</groupId>
-				<artifactId>gradle-core</artifactId>
-				<version>${gradle.version}</version>
-			</dependency>
-			<dependency>
-				<groupId>org.gradle</groupId>
 				<artifactId>gradle-base-services</artifactId>
 				<version>${gradle.version}</version>
 			</dependency>
@@ -189,13 +204,33 @@
 			</dependency>
 			<dependency>
 				<groupId>org.gradle</groupId>
+				<artifactId>gradle-core</artifactId>
+				<version>${gradle.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>org.gradle</groupId>
+				<artifactId>gradle-language-java</artifactId>
+				<version>${gradle.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>org.gradle</groupId>
+				<artifactId>gradle-language-jvm</artifactId>
+				<version>${gradle.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>org.gradle</groupId>
+				<artifactId>gradle-platform-jvm</artifactId>
+				<version>${gradle.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>org.gradle</groupId>
 				<artifactId>gradle-plugins</artifactId>
 				<version>${gradle.version}</version>
 			</dependency>
 			<dependency>
-				<groupId>org.projectlombok</groupId>
-				<artifactId>lombok</artifactId>
-				<version>1.12.6</version>
+				<groupId>org.jetbrains.kotlin</groupId>
+				<artifactId>kotlin-runtime</artifactId>
+				<version>1.0.4</version>
 			</dependency>
 			<dependency>
 				<groupId>org.zeroturnaround</groupId>
@@ -209,6 +244,11 @@
 		<dependency>
 			<groupId>junit</groupId>
 			<artifactId>junit</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.assertj</groupId>
+			<artifactId>assertj-core</artifactId>
 			<scope>test</scope>
 		</dependency>
 		<dependency>
@@ -239,24 +279,14 @@
 				<plugin>
 					<groupId>org.apache.maven.plugins</groupId>
 					<artifactId>maven-checkstyle-plugin</artifactId>
-					<version>2.16</version>
+					<version>2.17</version>
 					<dependencies>
 						<dependency>
 							<groupId>com.puppycrawl.tools</groupId>
 							<artifactId>checkstyle</artifactId>
-							<version>6.10.1</version>
+							<version>7.1.1</version>
 						</dependency>
 					</dependencies>
-				</plugin>
-				<plugin>
-					<groupId>org.apache.maven.plugins</groupId>
-					<artifactId>maven-invoker-plugin</artifactId>
-					<version>1.9</version>
-				</plugin>
-				<plugin>
-					<groupId>org.apache.maven.plugins</groupId>
-					<artifactId>maven-enforcer-plugin</artifactId>
-					<version>1.4</version>
 				</plugin>
 				<plugin>
 					<groupId>org.apache.maven.plugins</groupId>
@@ -289,7 +319,7 @@
 				<plugin>
 					<groupId>org.codehaus.mojo</groupId>
 					<artifactId>animal-sniffer-maven-plugin</artifactId>
-					<version>1.14</version>
+					<version>1.15</version>
 				</plugin>
 				<plugin>
 					<groupId>org.codehaus.cargo</groupId>
@@ -415,27 +445,27 @@
 										<ignore />
 									</action>
 								</pluginExecution>
-              					<pluginExecution>
-                					<pluginExecutionFilter>
-                  						<groupId>
-                  							org.apache.maven.plugins
-                  						</groupId>
-                  						<artifactId>
-                  							maven-invoker-plugin
-                  						</artifactId>
-                  						<versionRange>
-                  							[1.0.0,)
-                  						</versionRange>
-                  						<goals>
-                    						<goal>
-                    							install
-                    						</goal>
-                  						</goals>
-                					</pluginExecutionFilter>
-                					<action>
-                  						<ignore />
-                					</action>
-              					</pluginExecution>
+								<pluginExecution>
+									<pluginExecutionFilter>
+										<groupId>
+											org.apache.maven.plugins
+										</groupId>
+										<artifactId>
+											maven-invoker-plugin
+										</artifactId>
+										<versionRange>
+											[1.0.0,)
+										</versionRange>
+										<goals>
+											<goal>
+												install
+											</goal>
+										</goals>
+									</pluginExecutionFilter>
+									<action>
+										<ignore />
+									</action>
+								</pluginExecution>
 							</pluginExecutions>
 						</lifecycleMappingMetadata>
 					</configuration>
@@ -579,12 +609,10 @@
 					<skip>${disable.checks}</skip>
 					<signature>
 						<groupId>org.codehaus.mojo.signature</groupId>
-						<artifactId>java16</artifactId>
+						<artifactId>java18</artifactId>
 						<version>1.0</version>
 					</signature>
 					<annotations>
-						<annotation>org.springframework.lang.UsesJava8</annotation>
-						<annotation>org.springframework.lang.UsesJava7</annotation>
 						<annotation>org.springframework.boot.lang.UsesUnsafeJava</annotation>
 					</annotations>
 				</configuration>
@@ -631,6 +659,14 @@
 					<url>http://repo.spring.io/snapshot</url>
 					<snapshots>
 						<enabled>true</enabled>
+					</snapshots>
+				</repository>
+				<repository>
+					<id>rabbit-milestones</id>
+					<name>Rabbit Milestones</name>
+					<url>https://dl.bintray.com/rabbitmq/maven-milestones</url>
+					<snapshots>
+						<enabled>false</enabled>
 					</snapshots>
 				</repository>
 			</repositories>
@@ -688,6 +724,14 @@
 					<url>http://repo.spring.io/snapshot</url>
 					<snapshots>
 						<enabled>true</enabled>
+					</snapshots>
+				</repository>
+				<repository>
+					<id>rabbit-milestones</id>
+					<name>Rabbit Milestones</name>
+					<url>https://dl.bintray.com/rabbitmq/maven-milestones</url>
+					<snapshots>
+						<enabled>false</enabled>
 					</snapshots>
 				</repository>
 			</repositories>
@@ -758,6 +802,14 @@
 					<url>http://repo.spring.io/snapshot</url>
 					<snapshots>
 						<enabled>true</enabled>
+					</snapshots>
+				</repository>
+				<repository>
+					<id>rabbit-milestones</id>
+					<name>Rabbit Milestones</name>
+					<url>https://dl.bintray.com/rabbitmq/maven-milestones</url>
+					<snapshots>
+						<enabled>false</enabled>
 					</snapshots>
 				</repository>
 			</repositories>

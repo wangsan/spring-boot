@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2015 the original author or authors.
+ * Copyright 2012-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,25 +16,27 @@
 
 package org.springframework.boot.actuate.endpoint.mvc;
 
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
+
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.actuate.autoconfigure.MinimalActuatorHypermediaApplication;
-import org.springframework.boot.actuate.endpoint.mvc.HalBrowserMvcEndpointVanillaIntegrationTests.SpringBootHypermediaApplication;
-import org.springframework.boot.test.SpringApplicationConfiguration;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.annotation.DirtiesContext;
-import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
-import org.springframework.test.context.web.WebAppConfiguration;
+import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
-import static org.junit.Assert.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -46,10 +48,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * @author Dave Syer
  * @author Andy Wilkinson
  */
-@RunWith(SpringJUnit4ClassRunner.class)
-@SpringApplicationConfiguration(SpringBootHypermediaApplication.class)
-@WebAppConfiguration
+@RunWith(SpringRunner.class)
+@SpringBootTest
 @DirtiesContext
+@TestPropertySource(properties = "endpoints.hypermedia.enabled=true")
 public class HalBrowserMvcEndpointVanillaIntegrationTests {
 
 	@Autowired
@@ -73,19 +75,24 @@ public class HalBrowserMvcEndpointVanillaIntegrationTests {
 	}
 
 	@Test
+	public void linksWithTrailingSlash() throws Exception {
+		this.mockMvc.perform(get("/actuator/").accept(MediaType.APPLICATION_JSON))
+				.andExpect(status().isOk()).andExpect(jsonPath("$._links").exists())
+				.andExpect(header().doesNotExist("cache-control"));
+	}
+
+	@Test
 	public void browser() throws Exception {
-		MvcResult response = this.mockMvc
-				.perform(get("/actuator/").accept(MediaType.TEXT_HTML))
-				.andExpect(status().isOk()).andReturn();
-		assertEquals("/actuator/browser.html", response.getResponse().getForwardedUrl());
+		this.mockMvc.perform(get("/actuator/").accept(MediaType.TEXT_HTML))
+				.andExpect(status().isFound()).andExpect(header().string(
+						HttpHeaders.LOCATION, "http://localhost/actuator/browser.html"));
 	}
 
 	@Test
 	public void trace() throws Exception {
 		this.mockMvc.perform(get("/trace").accept(MediaType.APPLICATION_JSON))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$._links.self.href").value("http://localhost/trace"))
-				.andExpect(jsonPath("$.content").isArray());
+				.andExpect(status().isOk()).andExpect(jsonPath("$._links").doesNotExist())
+				.andExpect(jsonPath("$").isArray());
 	}
 
 	@Test
@@ -111,8 +118,13 @@ public class HalBrowserMvcEndpointVanillaIntegrationTests {
 
 	@Test
 	public void endpointsEachHaveSelf() throws Exception {
+		Set<String> collections = new HashSet<String>(
+				Arrays.asList("/trace", "/beans", "/dump", "/heapdump", "/loggers"));
 		for (MvcEndpoint endpoint : this.mvcEndpoints.getEndpoints()) {
 			String path = endpoint.getPath();
+			if (collections.contains(path)) {
+				continue;
+			}
 			path = path.length() > 0 ? path : "/";
 			this.mockMvc.perform(get(path).accept(MediaType.APPLICATION_JSON))
 					.andExpect(status().isOk()).andExpect(jsonPath("$._links.self.href")

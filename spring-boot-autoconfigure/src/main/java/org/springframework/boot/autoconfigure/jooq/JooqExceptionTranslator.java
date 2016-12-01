@@ -30,7 +30,7 @@ import org.springframework.jdbc.support.SQLExceptionTranslator;
 import org.springframework.jdbc.support.SQLStateSQLExceptionTranslator;
 
 /**
- * Transforms {@link java.sql.SQLException} into a Spring-specific @{link
+ * Transforms {@link java.sql.SQLException} into a Spring-specific {@link
  * DataAccessException}.
  *
  * @author Lukas Eder
@@ -57,8 +57,9 @@ class JooqExceptionTranslator extends DefaultExecuteListener {
 
 	private SQLExceptionTranslator getTranslator(ExecuteContext context) {
 		SQLDialect dialect = context.configuration().dialect();
-		if (dialect != null) {
-			return new SQLErrorCodeSQLExceptionTranslator(dialect.name());
+		if (dialect != null && dialect.thirdParty() != null) {
+			return new SQLErrorCodeSQLExceptionTranslator(
+					dialect.thirdParty().springDbName());
 		}
 		return new SQLStateSQLExceptionTranslator();
 	}

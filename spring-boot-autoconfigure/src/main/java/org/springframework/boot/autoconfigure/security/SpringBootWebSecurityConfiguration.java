@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2015 the original author or authors.
+ * Copyright 2012-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.autoconfigure.security.SecurityProperties.Headers;
+import org.springframework.boot.autoconfigure.security.SecurityProperties.Headers.ContentSecurityPolicyMode;
 import org.springframework.boot.autoconfigure.web.ErrorController;
 import org.springframework.boot.autoconfigure.web.ServerProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -53,8 +54,8 @@ import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
 
 /**
- * {@link EnableAutoConfiguration Auto-configuration} for security of a web application or
- * service. By default everything is secured with HTTP Basic authentication except the
+ * Configuration for security of a web application or service. By default everything is
+ * secured with HTTP Basic authentication except the
  * {@link SecurityProperties#getIgnored() explicitly ignored} paths (defaults to
  * <code>&#47;css&#47;**, &#47;js&#47;**, &#47;images&#47;**, &#47;**&#47;favicon.ico</code>
  * ). Many aspects of the behavior can be controller with {@link SecurityProperties} via
@@ -66,9 +67,10 @@ import org.springframework.util.StringUtils;
  * Some common simple customizations:
  * <ul>
  * <li>Switch off security completely and permanently: remove Spring Security from the
- * classpath or {@link EnableAutoConfiguration#exclude() exclude} this configuration.</li>
+ * classpath or {@link EnableAutoConfiguration#exclude() exclude}
+ * {@link SecurityAutoConfiguration}.</li>
  * <li>Switch off security temporarily (e.g. for a dev environment): set
- * {@code security.basic.enabled: false}</li>
+ * {@code security.basic.enabled=false}</li>
  * <li>Customize the user details: autowire an {@link AuthenticationManagerBuilder} into a
  * method in one of your configuration classes or equivalently add a bean of type
  * AuthenticationManager</li>
@@ -88,7 +90,7 @@ import org.springframework.util.StringUtils;
 public class SpringBootWebSecurityConfiguration {
 
 	private static List<String> DEFAULT_IGNORED = Arrays.asList("/css/**", "/js/**",
-			"/images/**", "/**/favicon.ico");
+			"/images/**", "/webjars/**", "/**/favicon.ico");
 
 	@Bean
 	@ConditionalOnMissingBean({ IgnoredPathsWebSecurityConfigurerAdapter.class })
@@ -99,13 +101,23 @@ public class SpringBootWebSecurityConfiguration {
 	public static void configureHeaders(HeadersConfigurer<?> configurer,
 			SecurityProperties.Headers headers) throws Exception {
 		if (headers.getHsts() != Headers.HSTS.NONE) {
-			boolean includeSubdomains = headers.getHsts() == Headers.HSTS.ALL;
-			HstsHeaderWriter writer = new HstsHeaderWriter(includeSubdomains);
+			boolean includeSubDomains = headers.getHsts() == Headers.HSTS.ALL;
+			HstsHeaderWriter writer = new HstsHeaderWriter(includeSubDomains);
 			writer.setRequestMatcher(AnyRequestMatcher.INSTANCE);
 			configurer.addHeaderWriter(writer);
 		}
 		if (!headers.isContentType()) {
 			configurer.contentTypeOptions().disable();
+		}
+		if (StringUtils.hasText(headers.getContentSecurityPolicy())) {
+			String policyDirectives = headers.getContentSecurityPolicy();
+			ContentSecurityPolicyMode mode = headers.getContentSecurityPolicyMode();
+			if (mode == ContentSecurityPolicyMode.DEFAULT) {
+				configurer.contentSecurityPolicy(policyDirectives);
+			}
+			else {
+				configurer.contentSecurityPolicy(policyDirectives).reportOnly();
+			}
 		}
 		if (!headers.isXss()) {
 			configurer.xssProtection().disable();
@@ -191,8 +203,11 @@ public class SpringBootWebSecurityConfiguration {
 	protected static class ApplicationWebSecurityConfigurerAdapter
 			extends WebSecurityConfigurerAdapter {
 
-		@Autowired
 		private SecurityProperties security;
+
+		protected ApplicationWebSecurityConfigurerAdapter(SecurityProperties security) {
+			this.security = security;
+		}
 
 		@Override
 		protected void configure(HttpSecurity http) throws Exception {

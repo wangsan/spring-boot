@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2015 the original author or authors.
+ * Copyright 2012-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,13 @@
 
 package org.springframework.boot.context.properties;
 
-import java.io.IOException;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanCreationException;
@@ -33,18 +35,19 @@ import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.bind.PropertiesConfigurationFactory;
-import org.springframework.boot.env.PropertySourcesLoader;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
+import org.springframework.context.ApplicationListener;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.EnvironmentAware;
-import org.springframework.context.ResourceLoaderAware;
+import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.support.PropertySourcesPlaceholderConfigurer;
 import org.springframework.core.Ordered;
 import org.springframework.core.PriorityOrdered;
 import org.springframework.core.annotation.AnnotationUtils;
 import org.springframework.core.convert.ConversionService;
 import org.springframework.core.convert.converter.Converter;
+import org.springframework.core.convert.converter.GenericConverter;
 import org.springframework.core.convert.support.DefaultConversionService;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.Environment;
@@ -52,9 +55,6 @@ import org.springframework.core.env.MutablePropertySources;
 import org.springframework.core.env.PropertySource;
 import org.springframework.core.env.PropertySources;
 import org.springframework.core.env.StandardEnvironment;
-import org.springframework.core.io.DefaultResourceLoader;
-import org.springframework.core.io.Resource;
-import org.springframework.core.io.ResourceLoader;
 import org.springframework.util.Assert;
 import org.springframework.util.ClassUtils;
 import org.springframework.util.StringUtils;
@@ -72,8 +72,8 @@ import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
  * @author Stephane Nicoll
  */
 public class ConfigurationPropertiesBindingPostProcessor implements BeanPostProcessor,
-		BeanFactoryAware, ResourceLoaderAware, EnvironmentAware, ApplicationContextAware,
-		InitializingBean, DisposableBean, PriorityOrdered {
+		BeanFactoryAware, EnvironmentAware, ApplicationContextAware, InitializingBean,
+		DisposableBean, ApplicationListener<ContextRefreshedEvent>, PriorityOrdered {
 
 	/**
 	 * The bean name of the configuration properties validator.
@@ -83,13 +83,16 @@ public class ConfigurationPropertiesBindingPostProcessor implements BeanPostProc
 	private static final String[] VALIDATOR_CLASSES = { "javax.validation.Validator",
 			"javax.validation.ValidatorFactory" };
 
+	private static final Log logger = LogFactory
+			.getLog(ConfigurationPropertiesBindingPostProcessor.class);
+
 	private ConfigurationBeanFactoryMetaData beans = new ConfigurationBeanFactoryMetaData();
 
 	private PropertySources propertySources;
 
 	private Validator validator;
 
-	private boolean ownedValidator = false;
+	private volatile Validator localValidator;
 
 	private ConversionService conversionService;
 
@@ -97,13 +100,13 @@ public class ConfigurationPropertiesBindingPostProcessor implements BeanPostProc
 
 	private BeanFactory beanFactory;
 
-	private ResourceLoader resourceLoader = new DefaultResourceLoader();
-
 	private Environment environment = new StandardEnvironment();
 
 	private ApplicationContext applicationContext;
 
 	private List<Converter<?, ?>> converters = Collections.emptyList();
+
+	private List<GenericConverter> genericConverters = Collections.emptyList();
 
 	private int order = Ordered.HIGHEST_PRECEDENCE + 1;
 
@@ -116,6 +119,17 @@ public class ConfigurationPropertiesBindingPostProcessor implements BeanPostProc
 	@ConfigurationPropertiesBinding
 	public void setConverters(List<Converter<?, ?>> converters) {
 		this.converters = converters;
+	}
+
+	/**
+	 * A list of custom converters (in addition to the defaults) to use when converting
+	 * properties for binding.
+	 * @param converters the converters to set
+	 */
+	@Autowired(required = false)
+	@ConfigurationPropertiesBinding
+	public void setGenericConverters(List<GenericConverter> converters) {
+		this.genericConverters = converters;
 	}
 
 	/**
@@ -173,11 +187,6 @@ public class ConfigurationPropertiesBindingPostProcessor implements BeanPostProc
 	}
 
 	@Override
-	public void setResourceLoader(ResourceLoader resourceLoader) {
-		this.resourceLoader = resourceLoader;
-	}
-
-	@Override
 	public void setEnvironment(Environment environment) {
 		this.environment = environment;
 	}
@@ -194,11 +203,6 @@ public class ConfigurationPropertiesBindingPostProcessor implements BeanPostProc
 		}
 		if (this.validator == null) {
 			this.validator = getOptionalBean(VALIDATOR_BEAN_NAME, Validator.class);
-			if (this.validator == null && isJsr303Present()) {
-				this.validator = new Jsr303ValidatorFactory()
-						.run(this.applicationContext);
-				this.ownedValidator = true;
-			}
 		}
 		if (this.conversionService == null) {
 			this.conversionService = getOptionalBean(
@@ -207,20 +211,26 @@ public class ConfigurationPropertiesBindingPostProcessor implements BeanPostProc
 		}
 	}
 
-	private boolean isJsr303Present() {
-		for (String validatorClass : VALIDATOR_CLASSES) {
-			if (!ClassUtils.isPresent(validatorClass,
-					this.applicationContext.getClassLoader())) {
-				return false;
-			}
-		}
-		return true;
+	@Override
+	public void onApplicationEvent(ContextRefreshedEvent event) {
+		freeLocalValidator();
 	}
 
 	@Override
 	public void destroy() throws Exception {
-		if (this.ownedValidator) {
-			((DisposableBean) this.validator).destroy();
+		freeLocalValidator();
+	}
+
+	private void freeLocalValidator() {
+		try {
+			Validator validator = this.localValidator;
+			this.localValidator = null;
+			if (validator != null) {
+				((DisposableBean) validator).destroy();
+			}
+		}
+		catch (Exception ex) {
+			throw new IllegalStateException(ex);
 		}
 	}
 
@@ -230,14 +240,14 @@ public class ConfigurationPropertiesBindingPostProcessor implements BeanPostProc
 			// Flatten the sources into a single list so they can be iterated
 			return new FlatPropertySources(configurer.getAppliedPropertySources());
 		}
-
 		if (this.environment instanceof ConfigurableEnvironment) {
 			MutablePropertySources propertySources = ((ConfigurableEnvironment) this.environment)
 					.getPropertySources();
 			return new FlatPropertySources(propertySources);
 		}
-
 		// empty, so not very useful, but fulfils the contract
+		logger.warn("Unable to obtain PropertySources from "
+				+ "PropertySourcesPlaceholderConfigurer or Environment");
 		return new MutablePropertySources();
 	}
 
@@ -250,6 +260,11 @@ public class ConfigurationPropertiesBindingPostProcessor implements BeanPostProc
 							false);
 			if (beans.size() == 1) {
 				return beans.values().iterator().next();
+			}
+			if (beans.size() > 1 && logger.isWarnEnabled()) {
+				logger.warn("Multiple PropertySourcesPlaceholderConfigurer "
+						+ "beans registered " + beans.keySet()
+						+ ", falling back to Environment");
 			}
 		}
 		return null;
@@ -291,13 +306,7 @@ public class ConfigurationPropertiesBindingPostProcessor implements BeanPostProc
 		Object target = bean;
 		PropertiesConfigurationFactory<Object> factory = new PropertiesConfigurationFactory<Object>(
 				target);
-		if (annotation != null && annotation.locations().length != 0) {
-			factory.setPropertySources(
-					loadPropertySources(annotation.locations(), annotation.merge()));
-		}
-		else {
-			factory.setPropertySources(this.propertySources);
-		}
+		factory.setPropertySources(this.propertySources);
 		factory.setValidator(determineValidator(bean));
 		// If no explicit conversion service is provided we add one so that (at least)
 		// comma-separated arrays of convertibles can be bound automatically
@@ -308,10 +317,8 @@ public class ConfigurationPropertiesBindingPostProcessor implements BeanPostProc
 			factory.setIgnoreUnknownFields(annotation.ignoreUnknownFields());
 			factory.setExceptionIfInvalid(annotation.exceptionIfInvalid());
 			factory.setIgnoreNestedProperties(annotation.ignoreNestedProperties());
-			String targetName = (StringUtils.hasLength(annotation.value())
-					? annotation.value() : annotation.prefix());
-			if (StringUtils.hasLength(targetName)) {
-				factory.setTargetName(targetName);
+			if (StringUtils.hasLength(annotation.prefix())) {
+				factory.setTargetName(annotation.prefix());
 			}
 		}
 		try {
@@ -329,8 +336,7 @@ public class ConfigurationPropertiesBindingPostProcessor implements BeanPostProc
 			return "";
 		}
 		StringBuilder details = new StringBuilder();
-		details.append("prefix=").append((StringUtils.hasLength(annotation.value())
-				? annotation.value() : annotation.prefix()));
+		details.append("prefix=").append(annotation.prefix());
 		details.append(", ignoreInvalidFields=").append(annotation.ignoreInvalidFields());
 		details.append(", ignoreUnknownFields=").append(annotation.ignoreUnknownFields());
 		details.append(", ignoreNestedProperties=")
@@ -339,42 +345,36 @@ public class ConfigurationPropertiesBindingPostProcessor implements BeanPostProc
 	}
 
 	private Validator determineValidator(Object bean) {
-		boolean globalValidatorSupportBean = (this.validator != null
-				&& this.validator.supports(bean.getClass()));
+		Validator validator = getValidator();
+		boolean supportsBean = (validator != null && validator.supports(bean.getClass()));
 		if (ClassUtils.isAssignable(Validator.class, bean.getClass())) {
-			if (!globalValidatorSupportBean) {
-				return (Validator) bean;
+			if (supportsBean) {
+				return new ChainingValidator(validator, (Validator) bean);
 			}
-			return new ChainingValidator(this.validator, (Validator) bean);
+			return (Validator) bean;
 		}
-		return (globalValidatorSupportBean ? this.validator : null);
+		return (supportsBean ? validator : null);
 	}
 
-	private PropertySources loadPropertySources(String[] locations,
-			boolean mergeDefaultSources) {
-		try {
-			PropertySourcesLoader loader = new PropertySourcesLoader();
-			for (String location : locations) {
-				Resource resource = this.resourceLoader
-						.getResource(this.environment.resolvePlaceholders(location));
-				String[] profiles = this.environment.getActiveProfiles();
-				for (int i = profiles.length; i-- > 0;) {
-					String profile = profiles[i];
-					loader.load(resource, profile);
-				}
-				loader.load(resource);
-			}
-			MutablePropertySources loaded = loader.getPropertySources();
-			if (mergeDefaultSources) {
-				for (PropertySource<?> propertySource : this.propertySources) {
-					loaded.addLast(propertySource);
-				}
-			}
-			return loaded;
+	private Validator getValidator() {
+		if (this.validator != null) {
+			return this.validator;
 		}
-		catch (IOException ex) {
-			throw new IllegalStateException(ex);
+		if (this.localValidator == null && isJsr303Present()) {
+			this.localValidator = new LocalValidatorFactory()
+					.run(this.applicationContext);
 		}
+		return this.localValidator;
+	}
+
+	private boolean isJsr303Present() {
+		for (String validatorClass : VALIDATOR_CLASSES) {
+			if (!ClassUtils.isPresent(validatorClass,
+					this.applicationContext.getClassLoader())) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	private ConversionService getDefaultConversionService() {
@@ -383,6 +383,9 @@ public class ConfigurationPropertiesBindingPostProcessor implements BeanPostProc
 			this.applicationContext.getAutowireCapableBeanFactory().autowireBean(this);
 			for (Converter<?, ?> converter : this.converters) {
 				conversionService.addConverter(converter);
+			}
+			for (GenericConverter genericConverter : this.genericConverters) {
+				conversionService.addConverter(genericConverter);
 			}
 			this.defaultConversionService = conversionService;
 		}
@@ -393,7 +396,7 @@ public class ConfigurationPropertiesBindingPostProcessor implements BeanPostProc
 	 * Factory to create JSR 303 LocalValidatorFactoryBean. Inner class to prevent class
 	 * loader issues.
 	 */
-	private static class Jsr303ValidatorFactory {
+	private static class LocalValidatorFactory {
 
 		public Validator run(ApplicationContext applicationContext) {
 			LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();

@@ -182,7 +182,7 @@ the `spring-boot` plugin:
 			classpath("org.springframework.boot:spring-boot-gradle-plugin:{spring-boot-version}")
 		}
 	}
-	apply plugin: 'spring-boot'
+	apply plugin: 'org.springframework.boot'
 ----
 
 If you are using a milestone or snapshot release you will also need to add appropriate
@@ -204,7 +204,7 @@ If you are using a milestone or snapshot release you will also need to add appro
 [[build-tool-plugins-gradle-dependency-management]]
 === Gradle dependency management
 The `spring-boot` plugin automatically applies the
-{dependency-management-plugin}/[Dependency Management Plugin] and configures in to import
+{dependency-management-plugin}/[Dependency Management Plugin] and configures it to import
 the `spring-boot-starter-parent` bom. This provides a similar dependency management
 experience to the one that is enjoyed by Maven users. For example, it allows you to omit
 version numbers when declaring dependencies that are managed in the bom. To make use of
@@ -267,8 +267,8 @@ To build and run a project artifact, you can type the following:
 ----
 
 To build a war file that is both executable and deployable into an external container,
-you need to mark the embedded container dependencies as belonging to a configuration
-named "`providedRuntime`", e.g:
+you need to mark the embedded container dependencies as belonging to the war plugin's
+`providedRuntime` configuration, e.g.:
 
 [source,groovy,indent=0,subs="verbatim,attributes"]
 ----
@@ -283,10 +283,6 @@ named "`providedRuntime`", e.g:
 	repositories {
 		jcenter()
 		maven { url "http://repo.spring.io/libs-snapshot" }
-	}
-
-	configurations {
-		providedRuntime
 	}
 
 	dependencies {
@@ -377,10 +373,10 @@ want the other Boot features but not this one)
 
 |`classifier`
 |A file name segment (before the extension) to add to the archive, so that the original is
- preserved in its original location. Defaults to null in which case the archive is
+ preserved in its original location. Defaults to `null` in which case the archive is
  repackaged in place. The default is convenient for many purposes, but if you want to use
- the original jar as a dependency in another project, it's best to use an extension to
- define the executable archive.
+ the original jar as a dependency in another project you must use a classifier to define
+ the executable archive.
 
 |`withJarTask`
 |The name or value of the `Jar` task (defaults to all tasks of type `Jar`) which is used
@@ -404,7 +400,7 @@ want the other Boot features but not this one)
 
 |`excludeDevtools`
 |Boolean flag to indicate if the devtools jar should be excluded from the repackaged
-archives. Defaults to `false`.
+archives. Defaults to `true`.
 |===
 
 
@@ -454,7 +450,7 @@ BootRepackage task and instructed it to work with only `clientJar` task and
 ----
 
 The configuration that we are referring to in `BootRepackage` is a normal
-http://www.gradle.org/docs/current/dsl/org.gradle.api.artifacts.Configuration.html[Gradle
+{gradle-dsl}/org.gradle.api.artifacts.Configuration.html[Gradle
 configuration]. In the above example we created a new configuration named
 `mycustomconfiguration` instructing it to derive from a `runtime` and exclude the `log4j`
 group. If the `clientBoot` task is executed, the repackaged boot jar will have all
@@ -485,13 +481,89 @@ The following configuration options are available:
 
 |`layout`
 |The type of archive, corresponding to how the dependencies are laid out inside
- (defaults to a guess based on the archive type).
+ (defaults to a guess based on the archive type). See
+ <<build-tool-plugins-gradle-configuration-layouts,available layouts for more details>>.
+
+|'layoutFactory`
+|A layout factory that can be used if a custom layout is required. Alternative layouts
+can be provided by 3rd parties. Layout factories are only used when `layout` is not
+specified.
 
 |`requiresUnpack`
 |A list of dependencies (in the form "`groupId:artifactId`" that must be unpacked from
  fat jars in order to run. Items are still packaged into the fat jar, but they will be
  automatically unpacked when it runs.
 |===
+
+
+
+[[build-tool-plugins-gradle-configuration-layouts]]
+==== Available layouts
+
+The `layout` attribute configures the format of the archive and whether the bootstrap
+loader should be included or not. The following layouts are available:
+
+[cols="2,4,1"]
+|===
+|Name |Description |Executable
+
+|`JAR`
+|Regular executable
+ <<appendix-executable-jar-format.adoc#executable-jar-jar-file-structure,JAR layout>>.
+|Yes
+
+|`WAR`
+|Executable
+ <<appendix-executable-jar-format.adoc#executable-jar-war-file-structure,WAR layout>>.
+ `provided` dependencies are placed in `WEB-INF/lib-provided` to avoid any clash when
+ the `war` is deployed in a servlet container.
+|Yes
+
+|`ZIP` (alias to `DIR`)
+|Similar to `JAR` layout, using
+ <<appendix-executable-jar-format.adoc#executable-jar-property-launcher-features,`PropertiesLauncher`>>.
+| Yes
+
+|`MODULE`
+|Bundle dependencies (excluding those with `provided` scope) and project resources.
+|No
+
+|`NONE`
+|Bundle all dependencies and project resources.
+|No
+|===
+
+
+
+[[build-tool-plugins-gradle-configuration-custom-repackager]]
+==== Using a custom layout
+If you have custom requirements for how to arrange the dependencies and loader classes
+inside the repackaged jar, you can use a custom layout. Any library which defines one
+or more `LayoutFactory` implementations can be added to the build script dependencies
+and then the layout factory becomes available in the `springBoot` configuration.
+For example:
+
+[source,groovy,indent=0,subs="verbatim,attributes"]
+----
+buildscript {
+	repositories {
+		mavenCentral()
+	}
+	dependencies {
+		classpath("org.springframework.boot:spring-boot-gradle-plugin:{spring-boot-version}")
+		classpath("com.example:custom-layout:1.0.0")
+	}
+}
+
+springBoot {
+    layoutFactory = new com.example.CustomLayoutFactory()
+}
+----
+
+NOTE: If there is only one custom `LayoutFactory` on the build classpath and it is
+listed in `META-INF/spring.factories` then it is unnecessary to explicitly set it in the
+`springBoot` configuration. Layout factories are only used when no explicit `layout` is
+specified.
 
 
 
@@ -559,8 +631,7 @@ using Gradle and how you're trying to publish the artifacts.
 ==== Configuring Gradle to produce a pom that inherits dependency management
 The following is an example of configuring Gradle to generate a pom that inherits
 from `spring-boot-starter-parent`. Please refer to the
-http://www.gradle.org/docs/current/userguide/userguide.html[Gradle User Guide] for
-further information.
+{gradle-user-guide}/userguide.html[Gradle User Guide] for further information.
 
 [source,groovy,indent=0,subs="verbatim,attributes"]
 ----
@@ -689,7 +760,7 @@ classpath of the application.
 
 
 
-===== Examples
+==== Examples
 .Specify +start-class+
 [source,xml,indent=0]
 ----
@@ -740,7 +811,7 @@ attributes are supported
 
 
 
-===== Examples
+==== Examples
 .Find and log
 [source,xml,indent=0]
 ----

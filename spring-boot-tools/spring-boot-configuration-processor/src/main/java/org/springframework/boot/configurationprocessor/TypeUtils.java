@@ -27,7 +27,6 @@ import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
-import javax.lang.model.type.WildcardType;
 import javax.lang.model.util.Types;
 
 /**
@@ -73,18 +72,56 @@ class TypeUtils {
 	TypeUtils(ProcessingEnvironment env) {
 		this.env = env;
 		Types types = env.getTypeUtils();
-		WildcardType wc = types.getWildcardType(null, null);
-		this.collectionType = types.getDeclaredType(
-				this.env.getElementUtils().getTypeElement(Collection.class.getName()),
-				wc);
-		this.mapType = types.getDeclaredType(
-				this.env.getElementUtils().getTypeElement(Map.class.getName()), wc, wc);
+		this.collectionType = getDeclaredType(types, Collection.class, 1);
+		this.mapType = getDeclaredType(types, Map.class, 2);
 	}
 
-	public String getType(Element element) {
-		return getType(element == null ? null : element.asType());
+	private TypeMirror getDeclaredType(Types types, Class<?> typeClass,
+			int numberOfTypeArgs) {
+		TypeMirror[] typeArgs = new TypeMirror[numberOfTypeArgs];
+		for (int i = 0; i < typeArgs.length; i++) {
+			typeArgs[i] = types.getWildcardType(null, null);
+		}
+		TypeElement typeElement = this.env.getElementUtils()
+				.getTypeElement(typeClass.getName());
+		try {
+			return types.getDeclaredType(typeElement, typeArgs);
+		}
+		catch (IllegalArgumentException ex) {
+			// Try again without generics for older Java versions
+			return types.getDeclaredType(typeElement);
+		}
 	}
 
+	/**
+	 * Return the qualified name of the specified element.
+	 * @param element the element to handle
+	 * @return the fully qualified name of the element, suitable for a call to
+	 * {@link Class#forName(String)}
+	 */
+	public String getQualifiedName(Element element) {
+		if (element == null) {
+			return null;
+		}
+		TypeElement enclosingElement = getEnclosingTypeElement(element.asType());
+		if (enclosingElement != null) {
+			return getQualifiedName(enclosingElement) + "$"
+					+ ((DeclaredType) element.asType()).asElement().getSimpleName()
+							.toString();
+		}
+		if (element instanceof TypeElement) {
+			return ((TypeElement) element).getQualifiedName().toString();
+		}
+		throw new IllegalStateException(
+				"Could not extract qualified name from " + element);
+	}
+
+	/**
+	 * Return the type of the specified {@link TypeMirror} including all its generic
+	 * information.
+	 * @param type the type to handle
+	 * @return a representation of the type including all its generic information
+	 */
 	public String getType(TypeMirror type) {
 		if (type == null) {
 			return null;
@@ -93,15 +130,23 @@ class TypeUtils {
 		if (wrapper != null) {
 			return wrapper.getName();
 		}
+		TypeElement enclosingElement = getEnclosingTypeElement(type);
+		if (enclosingElement != null) {
+			return getQualifiedName(enclosingElement) + "$"
+					+ ((DeclaredType) type).asElement().getSimpleName().toString();
+		}
+		return type.toString();
+	}
+
+	private TypeElement getEnclosingTypeElement(TypeMirror type) {
 		if (type instanceof DeclaredType) {
 			DeclaredType declaredType = (DeclaredType) type;
 			Element enclosingElement = declaredType.asElement().getEnclosingElement();
 			if (enclosingElement != null && enclosingElement instanceof TypeElement) {
-				return getType(enclosingElement) + "$"
-						+ declaredType.asElement().getSimpleName().toString();
+				return (TypeElement) enclosingElement;
 			}
 		}
-		return type.toString();
+		return null;
 	}
 
 	public boolean isCollectionOrMap(TypeMirror type) {

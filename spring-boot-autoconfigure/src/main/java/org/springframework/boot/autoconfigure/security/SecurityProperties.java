@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2015 the original author or authors.
+ * Copyright 2012-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,10 +19,11 @@ package org.springframework.boot.autoconfigure.security;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
-import org.springframework.boot.context.embedded.FilterRegistrationBean;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.core.Ordered;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.util.StringUtils;
@@ -98,6 +99,11 @@ public class SecurityProperties implements SecurityPrerequisite {
 	 */
 	private int filterOrder = DEFAULT_FILTER_ORDER;
 
+	/**
+	 * Security filter chain dispatcher types.
+	 */
+	private Set<String> filterDispatcherTypes;
+
 	public Headers getHeaders() {
 		return this.headers;
 	}
@@ -154,10 +160,32 @@ public class SecurityProperties implements SecurityPrerequisite {
 		this.filterOrder = filterOrder;
 	}
 
+	public Set<String> getFilterDispatcherTypes() {
+		return this.filterDispatcherTypes;
+	}
+
+	public void setFilterDispatcherTypes(Set<String> filterDispatcherTypes) {
+		this.filterDispatcherTypes = filterDispatcherTypes;
+	}
+
 	public static class Headers {
 
 		public enum HSTS {
 			NONE, DOMAIN, ALL
+		}
+
+		public enum ContentSecurityPolicyMode {
+
+			/**
+			 * Use the 'Content-Security-Policy' header.
+			 */
+			DEFAULT,
+
+			/**
+			 * Use the 'Content-Security-Policy-Report-Only' header.
+			 */
+			REPORT_ONLY
+
 		}
 
 		/**
@@ -179,6 +207,16 @@ public class SecurityProperties implements SecurityPrerequisite {
 		 * Enable "X-Content-Type-Options" header.
 		 */
 		private boolean contentType = true;
+
+		/**
+		 * Value for content security policy header.
+		 */
+		private String contentSecurityPolicy;
+
+		/**
+		 * Content security policy mode.
+		 */
+		private ContentSecurityPolicyMode contentSecurityPolicyMode = ContentSecurityPolicyMode.DEFAULT;
 
 		/**
 		 * HTTP Strict Transport Security (HSTS) mode (none, domain, all).
@@ -215,6 +253,23 @@ public class SecurityProperties implements SecurityPrerequisite {
 
 		public void setContentType(boolean contentType) {
 			this.contentType = contentType;
+		}
+
+		public String getContentSecurityPolicy() {
+			return this.contentSecurityPolicy;
+		}
+
+		public void setContentSecurityPolicy(String contentSecurityPolicy) {
+			this.contentSecurityPolicy = contentSecurityPolicy;
+		}
+
+		public ContentSecurityPolicyMode getContentSecurityPolicyMode() {
+			return this.contentSecurityPolicyMode;
+		}
+
+		public void setContentSecurityPolicyMode(
+				ContentSecurityPolicyMode contentSecurityPolicyMode) {
+			this.contentSecurityPolicyMode = contentSecurityPolicyMode;
 		}
 
 		public HSTS getHsts() {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2015 the original author or authors.
+ * Copyright 2012-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ public class ProjectCreator {
 	private String gradleVersion;
 
 	public ProjectCreator() {
-		this("1.12");
+		this("2.9");
 	}
 
 	public ProjectCreator(String gradleVersion) {
@@ -62,4 +62,5 @@ public class ProjectCreator {
 		((DefaultGradleConnector) gradleConnector).embedded(true);
 		return gradleConnector.forProjectDirectory(projectDirectory).connect();
 	}
+
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2015 the original author or authors.
+ * Copyright 2012-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -52,6 +52,8 @@ import org.springframework.boot.loader.tools.MainClassFinder;
  */
 public abstract class AbstractRunMojo extends AbstractDependencyFilterMojo {
 
+	private static final String SPRING_BOOT_APPLICATION_CLASS_NAME = "org.springframework.boot.autoconfigure.SpringBootApplication";
+
 	private static final String SPRING_LOADED_AGENT_CLASS_NAME = "org.springsource.loaded.agent.SpringLoadedAgent";
 
 	/**
@@ -64,9 +66,9 @@ public abstract class AbstractRunMojo extends AbstractDependencyFilterMojo {
 	/**
 	 * Add maven resources to the classpath directly, this allows live in-place editing of
 	 * resources. Duplicate resources are removed from {@code target/classes} to prevent
-	 * them to appear twice if {@code ClassLoader.getResources()} is called. Please consider
-	 * adding {@code spring-boot-devtools} to your project instead as it provides this feature
-	 * and many more.
+	 * them to appear twice if {@code ClassLoader.getResources()} is called. Please
+	 * consider adding {@code spring-boot-devtools} to your project instead as it provides
+	 * this feature and many more.
 	 * @since 1.0
 	 */
 	@Parameter(property = "run.addResources", defaultValue = "false")
@@ -88,8 +90,19 @@ public abstract class AbstractRunMojo extends AbstractDependencyFilterMojo {
 	private Boolean noverify;
 
 	/**
+	 * Current working directory to use for the application. If not specified, basedir
+	 * will be used. NOTE: the use of working directory means that processes will be
+	 * started by forking a new JVM.
+	 * @since 1.5
+	 */
+	@Parameter(property = "run.workingDirectory")
+	private File workingDirectory;
+
+	/**
 	 * JVM arguments that should be associated with the forked process used to run the
 	 * application. On command line, make sure to wrap multiple values between quotes.
+	 * NOTE: the use of JVM arguments means that processes will be started by forking a
+	 * new JVM.
 	 * @since 1.1
 	 */
 	@Parameter(property = "run.jvmArguments")
@@ -137,8 +150,9 @@ public abstract class AbstractRunMojo extends AbstractDependencyFilterMojo {
 	private File classesDirectory;
 
 	/**
-	 * Flag to indicate if the run processes should be forked. By default process forking
-	 * is only used if an agent or jvmArguments are specified.
+	 * Flag to indicate if the run processes should be forked. {@code fork} is
+	 * automatically enabled if an agent, jvmArguments or working directory are specified,
+	 * or if devtools is present.
 	 * @since 1.2
 	 */
 	@Parameter(property = "fork")
@@ -152,12 +166,37 @@ public abstract class AbstractRunMojo extends AbstractDependencyFilterMojo {
 	private Boolean useTestClasspath;
 
 	/**
+	 * Skip the execution.
+	 * @since 1.3.2
+	 */
+	@Parameter(property = "skip", defaultValue = "false")
+	private boolean skip;
+
+	@Override
+	public void execute() throws MojoExecutionException, MojoFailureException {
+		if (this.skip) {
+			getLog().debug("skipping run as per configuration.");
+			return;
+		}
+		run(getStartClass());
+	}
+
+	/**
 	 * Specify if the application process should be forked.
 	 * @return {@code true} if the application process should be forked
 	 */
 	protected boolean isFork() {
 		return (Boolean.TRUE.equals(this.fork)
-				|| (this.fork == null && (hasAgent() || hasJvmArgs())));
+				|| (this.fork == null && enableForkByDefault()));
+	}
+
+	/**
+	 * Specify if fork should be enabled by default.
+	 * @return {@code true} if fork should be enabled by default
+	 * @see #logDisabledFork()
+	 */
+	protected boolean enableForkByDefault() {
+		return hasAgent() || hasJvmArgs() || hasWorkingDirectorySet();
 	}
 
 	private boolean hasAgent() {
@@ -168,10 +207,8 @@ public abstract class AbstractRunMojo extends AbstractDependencyFilterMojo {
 		return (this.jvmArguments != null && this.jvmArguments.length() > 0);
 	}
 
-	@Override
-	public void execute() throws MojoExecutionException, MojoFailureException {
-		final String startClassName = getStartClass();
-		run(startClassName);
+	private boolean hasWorkingDirectorySet() {
+		return this.workingDirectory != null;
 	}
 
 	private void findAgent() {
@@ -201,18 +238,33 @@ public abstract class AbstractRunMojo extends AbstractDependencyFilterMojo {
 	private void run(String startClassName)
 			throws MojoExecutionException, MojoFailureException {
 		findAgent();
-		if (isFork()) {
+		boolean fork = isFork();
+		this.project.getProperties().setProperty("_spring.boot.fork.enabled",
+				Boolean.toString(fork));
+		if (fork) {
 			doRunWithForkedJvm(startClassName);
 		}
 		else {
-			if (hasAgent()) {
-				getLog().warn("Fork mode disabled, ignoring agent");
-			}
-			if (hasJvmArgs()) {
-				getLog().warn("Fork mode disabled, ignoring JVM argument(s) ["
-						+ this.jvmArguments + "]");
-			}
+			logDisabledFork();
 			runWithMavenJvm(startClassName, resolveApplicationArguments().asArray());
+		}
+	}
+
+	/**
+	 * Log a warning indicating that fork mode has been explicitly disabled while some
+	 * conditions are present that require to enable it.
+	 * @see #enableForkByDefault()
+	 */
+	protected void logDisabledFork() {
+		if (hasAgent()) {
+			getLog().warn("Fork mode disabled, ignoring agent");
+		}
+		if (hasJvmArgs()) {
+			getLog().warn("Fork mode disabled, ignoring JVM argument(s) ["
+					+ this.jvmArguments + "]");
+		}
+		if (hasWorkingDirectorySet()) {
+			getLog().warn("Fork mode disabled, ignoring working directory configuration");
 		}
 	}
 
@@ -224,16 +276,17 @@ public abstract class AbstractRunMojo extends AbstractDependencyFilterMojo {
 		addClasspath(args);
 		args.add(startClassName);
 		addArgs(args);
-		runWithForkedJvm(args);
+		runWithForkedJvm(this.workingDirectory, args);
 	}
 
 	/**
 	 * Run with a forked VM, using the specified command line arguments.
+	 * @param workingDirectory the working directory of the forked JVM
 	 * @param args the arguments (JVM arguments and application arguments)
 	 * @throws MojoExecutionException in case of MOJO execution errors
 	 * @throws MojoFailureException in case of MOJO failures
 	 */
-	protected abstract void runWithForkedJvm(List<String> args)
+	protected abstract void runWithForkedJvm(File workingDirectory, List<String> args)
 			throws MojoExecutionException, MojoFailureException;
 
 	/**
@@ -323,7 +376,8 @@ public abstract class AbstractRunMojo extends AbstractDependencyFilterMojo {
 		String mainClass = this.mainClass;
 		if (mainClass == null) {
 			try {
-				mainClass = MainClassFinder.findSingleMainClass(this.classesDirectory);
+				mainClass = MainClassFinder.findSingleMainClass(this.classesDirectory,
+						SPRING_BOOT_APPLICATION_CLASS_NAME);
 			}
 			catch (IOException ex) {
 				throw new MojoExecutionException(ex.getMessage(), ex);
@@ -390,7 +444,7 @@ public abstract class AbstractRunMojo extends AbstractDependencyFilterMojo {
 	}
 
 	private void logArguments(String message, String[] args) {
-		StringBuffer sb = new StringBuffer(message);
+		StringBuilder sb = new StringBuilder(message);
 		for (String arg : args) {
 			sb.append(arg).append(" ");
 		}
@@ -415,6 +469,8 @@ public abstract class AbstractRunMojo extends AbstractDependencyFilterMojo {
 	 */
 	class IsolatedThreadGroup extends ThreadGroup {
 
+		private final Object monitor = new Object();
+
 		private Throwable exception;
 
 		IsolatedThreadGroup(String name) {
@@ -424,18 +480,21 @@ public abstract class AbstractRunMojo extends AbstractDependencyFilterMojo {
 		@Override
 		public void uncaughtException(Thread thread, Throwable ex) {
 			if (!(ex instanceof ThreadDeath)) {
-				synchronized (this) {
+				synchronized (this.monitor) {
 					this.exception = (this.exception == null ? ex : this.exception);
 				}
 				getLog().warn(ex);
 			}
 		}
 
-		public synchronized void rethrowUncaughtException()
-				throws MojoExecutionException {
-			if (this.exception != null) {
-				throw new MojoExecutionException("An exception occurred while running. "
-						+ this.exception.getMessage(), this.exception);
+		public void rethrowUncaughtException() throws MojoExecutionException {
+			synchronized (this.monitor) {
+				if (this.exception != null) {
+					throw new MojoExecutionException(
+							"An exception occurred while running. "
+									+ this.exception.getMessage(),
+							this.exception);
+				}
 			}
 		}
 

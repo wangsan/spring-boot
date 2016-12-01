@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2015 the original author or authors.
+ * Copyright 2012-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,14 +26,13 @@ import org.springframework.boot.cli.infrastructure.CommandLineInvoker.Invocation
 import org.springframework.boot.loader.tools.JavaExecutable;
 import org.springframework.util.SocketUtils;
 
-import static org.hamcrest.Matchers.containsString;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Integration test for {@link WarCommand}.
  *
  * @author Andrey Stolyarov
+ * @author Henri Kerola
  */
 public class WarCommandIT {
 
@@ -47,18 +46,17 @@ public class WarCommandIT {
 		Invocation invocation = this.cli.invoke("war", war.getAbsolutePath(),
 				"war.groovy");
 		invocation.await();
-		assertTrue(war.exists());
+		assertThat(war.exists()).isTrue();
 		Process process = new JavaExecutable()
 				.processBuilder("-jar", war.getAbsolutePath(), "--server.port=" + port)
 				.start();
 		invocation = new Invocation(process);
 		invocation.await();
-		assertThat(invocation.getErrorOutput(), containsString("onStart error"));
-		assertThat(invocation.getStandardOutput(), containsString("Tomcat started"));
-		assertThat(invocation.getStandardOutput(),
-				containsString("/WEB-INF/lib-provided/tomcat-embed-core"));
-		assertThat(invocation.getStandardOutput(),
-				containsString("/WEB-INF/lib-provided/tomcat-embed-core"));
+		assertThat(invocation.getOutput()).contains("onStart error");
+		assertThat(invocation.getOutput()).contains("Tomcat started");
+		assertThat(invocation.getOutput())
+				.contains("/WEB-INF/lib-provided/tomcat-embed-core");
+		assertThat(invocation.getOutput()).contains("WEB-INF/classes!/root.properties");
 		process.destroy();
 	}
 

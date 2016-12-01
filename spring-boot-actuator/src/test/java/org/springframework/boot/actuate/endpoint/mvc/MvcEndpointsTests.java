@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 the original author or authors.
+ * Copyright 2012-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,10 +19,12 @@ package org.springframework.boot.actuate.endpoint.mvc;
 import org.junit.Test;
 
 import org.springframework.boot.actuate.endpoint.AbstractEndpoint;
-import org.springframework.boot.test.EnvironmentTestUtils;
+import org.springframework.boot.actuate.endpoint.Endpoint;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.test.util.EnvironmentTestUtils;
 import org.springframework.context.support.StaticApplicationContext;
 
-import static org.junit.Assert.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Tests for {@link MvcEndpoints}.
@@ -41,7 +43,7 @@ public class MvcEndpointsTests {
 				new TestEndpoint());
 		this.endpoints.setApplicationContext(this.context);
 		this.endpoints.afterPropertiesSet();
-		assertEquals(1, this.endpoints.getEndpoints().size());
+		assertThat(this.endpoints.getEndpoints()).hasSize(1);
 	}
 
 	@Test
@@ -52,7 +54,7 @@ public class MvcEndpointsTests {
 				new TestEndpoint());
 		this.endpoints.setApplicationContext(this.context);
 		this.endpoints.afterPropertiesSet();
-		assertEquals(1, this.endpoints.getEndpoints().size());
+		assertThat(this.endpoints.getEndpoints()).hasSize(1);
 	}
 
 	@Test
@@ -61,7 +63,7 @@ public class MvcEndpointsTests {
 				new EndpointMvcAdapter(new TestEndpoint()));
 		this.endpoints.setApplicationContext(this.context);
 		this.endpoints.afterPropertiesSet();
-		assertEquals(1, this.endpoints.getEndpoints().size());
+		assertThat(this.endpoints.getEndpoints()).hasSize(1);
 	}
 
 	@Test
@@ -72,20 +74,46 @@ public class MvcEndpointsTests {
 				new TestEndpoint());
 		this.endpoints.setApplicationContext(this.context);
 		this.endpoints.afterPropertiesSet();
-		assertEquals(1, this.endpoints.getEndpoints().size());
-		assertEquals("/foo/bar",
-				this.endpoints.getEndpoints().iterator().next().getPath());
+		assertThat(this.endpoints.getEndpoints()).hasSize(1);
+		assertThat(this.endpoints.getEndpoints().iterator().next().getPath())
+				.isEqualTo("/foo/bar");
 	}
 
+	@Test
+	public void getEndpointsForSpecifiedType() throws Exception {
+		this.context.getDefaultListableBeanFactory().registerSingleton("endpoint-1",
+				new TestMvcEndpoint(new TestEndpoint()));
+		this.context.getDefaultListableBeanFactory().registerSingleton("endpoint-2",
+				new OtherTestMvcEndpoint(new TestEndpoint()));
+		this.endpoints.setApplicationContext(this.context);
+		this.endpoints.afterPropertiesSet();
+		assertThat(this.endpoints.getEndpoints(TestMvcEndpoint.class)).hasSize(1);
+	}
+
+	@ConfigurationProperties("endpoints.test")
 	protected static class TestEndpoint extends AbstractEndpoint<String> {
 
-		public TestEndpoint() {
+		TestEndpoint() {
 			super("test");
 		}
 
 		@Override
 		public String invoke() {
 			return "foo";
+		}
+	}
+
+	private static class TestMvcEndpoint extends EndpointMvcAdapter {
+
+		TestMvcEndpoint(Endpoint<?> delegate) {
+			super(delegate);
+		}
+	}
+
+	private static class OtherTestMvcEndpoint extends EndpointMvcAdapter {
+
+		OtherTestMvcEndpoint(Endpoint<?> delegate) {
+			super(delegate);
 		}
 	}
 

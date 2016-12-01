@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2015 the original author or authors.
+ * Copyright 2012-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@
 
 package org.springframework.boot.autoconfigure.cassandra;
 
+import java.util.List;
+
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.QueryOptions;
 import com.datastax.driver.core.SocketOptions;
@@ -24,7 +26,7 @@ import com.datastax.driver.core.policies.ReconnectionPolicy;
 import com.datastax.driver.core.policies.RetryPolicy;
 
 import org.springframework.beans.BeanUtils;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -45,8 +47,15 @@ import org.springframework.util.StringUtils;
 @EnableConfigurationProperties(CassandraProperties.class)
 public class CassandraAutoConfiguration {
 
-	@Autowired
-	private CassandraProperties properties;
+	private final CassandraProperties properties;
+
+	private final List<ClusterCustomizer> clusterCustomizers;
+
+	public CassandraAutoConfiguration(CassandraProperties properties,
+			ObjectProvider<List<ClusterCustomizer>> clusterCustomizersProvider) {
+		this.properties = properties;
+		this.clusterCustomizers = clusterCustomizersProvider.getIfAvailable();
+	}
 
 	@Bean
 	@ConditionalOnMissingBean
@@ -80,11 +89,22 @@ public class CassandraAutoConfiguration {
 		}
 		String points = properties.getContactPoints();
 		builder.addContactPoints(StringUtils.commaDelimitedListToStringArray(points));
-		return builder.build();
+
+		Cluster cluster = builder.build();
+		customize(cluster);
+		return cluster;
+	}
+
+	private void customize(Cluster cluster) {
+		if (this.clusterCustomizers != null) {
+			for (ClusterCustomizer customizer : this.clusterCustomizers) {
+				customizer.customize(cluster);
+			}
+		}
 	}
 
 	public static <T> T instantiate(Class<T> type) {
-		return BeanUtils.instantiate(type);
+		return BeanUtils.instantiateClass(type);
 	}
 
 	private QueryOptions getQueryOptions() {

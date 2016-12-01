@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2015 the original author or authors.
+ * Copyright 2012-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,15 +16,16 @@
 
 package org.springframework.boot.autoconfigure;
 
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-
 import javax.validation.Validation;
 
 import org.apache.catalina.mbeans.MBeanFactory;
 
-import org.springframework.boot.context.event.ApplicationStartedEvent;
+import org.springframework.boot.context.event.ApplicationEnvironmentPreparedEvent;
+import org.springframework.boot.logging.LoggingApplicationListener;
 import org.springframework.context.ApplicationListener;
+import org.springframework.core.annotation.Order;
+import org.springframework.format.support.DefaultFormattingConversionService;
+import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
 import org.springframework.http.converter.support.AllEncompassingFormHttpMessageConverter;
 
 /**
@@ -32,45 +33,44 @@ import org.springframework.http.converter.support.AllEncompassingFormHttpMessage
  * time consuming tasks.
  *
  * @author Phillip Webb
+ * @author Andy Wilkinson
  * @since 1.3.0
  */
+@Order(LoggingApplicationListener.DEFAULT_ORDER + 1)
 public class BackgroundPreinitializer
-		implements ApplicationListener<ApplicationStartedEvent> {
+		implements ApplicationListener<ApplicationEnvironmentPreparedEvent> {
 
 	@Override
-	public void onApplicationEvent(ApplicationStartedEvent event) {
-		ExecutorService executor = Executors.newSingleThreadExecutor();
-		submit(executor, new MessageConverterInitializer());
-		submit(executor, new MBeanFactoryInitializer());
-		submit(executor, new ValidationInitializer());
-		executor.shutdown();
-	}
+	public void onApplicationEvent(ApplicationEnvironmentPreparedEvent event) {
+		try {
+			Thread thread = new Thread(new Runnable() {
 
-	private void submit(ExecutorService executor, Runnable runnable) {
-		executor.submit(new FailSafeRunnable(runnable));
-	}
+				@Override
+				public void run() {
+					runSafely(new MessageConverterInitializer());
+					runSafely(new MBeanFactoryInitializer());
+					runSafely(new ValidationInitializer());
+					runSafely(new JacksonInitializer());
+					runSafely(new ConversionServiceInitializer());
+				}
 
-	/**
-	 * Wrapper to ignore any thrown exceptions.
-	 */
-	private static class FailSafeRunnable implements Runnable {
+				public void runSafely(Runnable runnable) {
+					try {
+						runnable.run();
+					}
+					catch (Throwable ex) {
+						// Ignore
+					}
+				}
 
-		private final Runnable delegate;
-
-		FailSafeRunnable(Runnable delegate) {
-			this.delegate = delegate;
+			}, "background-preinit");
+			thread.start();
 		}
-
-		@Override
-		public void run() {
-			try {
-				this.delegate.run();
-			}
-			catch (Throwable ex) {
-				// Ignore
-			}
+		catch (Exception ex) {
+			// This will fail on GAE where creating threads is prohibited. We can safely
+			// continue but startup will be slightly slower as the initialization will now
+			// happen on the main thread.
 		}
-
 	}
 
 	/**
@@ -108,4 +108,29 @@ public class BackgroundPreinitializer
 		}
 
 	}
+
+	/**
+	 * Early initializer for Jackson.
+	 */
+	private static class JacksonInitializer implements Runnable {
+
+		@Override
+		public void run() {
+			Jackson2ObjectMapperBuilder.json().build();
+		}
+
+	}
+
+	/**
+	 * Early initializer for Spring's ConversionService.
+	 */
+	private static class ConversionServiceInitializer implements Runnable {
+
+		@Override
+		public void run() {
+			new DefaultFormattingConversionService();
+		}
+
+	}
+
 }
